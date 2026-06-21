@@ -173,6 +173,17 @@ const DICT = {
 
     'card.freeform_placeholder': '…hoặc tự nhập câu trả lời',
     'card.send': '↵ Gửi',
+    'card.form_drop_hint': '📎 Kéo / dán / chọn tệp làm tư liệu (logo, ảnh chụp, CSV… tuỳ chọn)',
+    'card.form_attach': '+ Thêm tệp',
+    'card.form_submit': 'Gửi ↵',
+    'card.confirm_generate': '✓ Bắt đầu tạo',
+    'card.confirm_edit': '✏️ Sửa',
+
+    'toast.save_failed': 'Lưu thất bại: {message}',
+    'toast.saved_changes': 'Đã lưu {count} thay đổi',
+    'toast.error': 'Lỗi: {message}',
+    'toast.init_failed': 'Khởi tạo thất bại: {message}',
+    'frame.editing_this': 'Đang sửa khung này',
 
     'settings.title': 'Cài đặt',
     'settings.tab.agent': 'Agent',
@@ -386,6 +397,17 @@ const DICT = {
 
     'card.freeform_placeholder': '…or type your own answer',
     'card.send': '↵ Send',
+    'card.form_drop_hint': '📎 Drag / paste / choose files as material (logo, screenshots, CSV… optional)',
+    'card.form_attach': '+ Add file',
+    'card.form_submit': 'Submit ↵',
+    'card.confirm_generate': '✓ Start generating',
+    'card.confirm_edit': '✏️ Edit',
+
+    'toast.save_failed': 'Save failed: {message}',
+    'toast.saved_changes': 'Saved {count} change(s)',
+    'toast.error': 'Error: {message}',
+    'toast.init_failed': 'Init failed: {message}',
+    'frame.editing_this': 'Editing this frame',
 
     'settings.title': 'Settings',
     'settings.tab.agent': 'Agent',
