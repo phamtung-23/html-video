@@ -824,8 +824,9 @@ async function concatFramesWithFfmpeg(
  * Mix a background-music track and/or a narration track into a (silent) video
  * file, writing the result to `outputPath`. Video is stream-copied (no
  * re-encode); audio is encoded to AAC. Music is ducked under narration via a
- * volume offset, optional fade in/out is applied to the music, and `-shortest`
- * keeps the result aligned to the video length.
+ * volume offset, optional fade in/out is applied to the music. The mixed audio
+ * is padded with trailing silence (apad) so a short narration can't shorten the
+ * video; `-shortest` then clamps the output to the (finite) video length.
  *
  * `videoPath` and `outputPath` must differ. Throws HtmlVideoError on ffmpeg
  * failure; a missing ffmpeg yields the same friendly hint as concat.
@@ -878,10 +879,15 @@ async function muxAudioWithFfmpeg(args: {
     mixLabels.push('[vo]');
   }
   if (mixLabels.length === 2) {
-    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[aout]`);
+    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[amixed]`);
+    // Pad with trailing silence so the audio is NEVER shorter than the video.
+    // Otherwise `-shortest` below trims the VIDEO down to a short narration and
+    // drops later scenes (the "scenes incomplete" bug). apad makes the audio
+    // effectively infinite, so `-shortest` clamps the output to the finite video.
+    filters.push(`[amixed]apad[aout]`);
   } else {
-    // single source → relabel to [aout]
-    filters.push(`${mixLabels[0]}anull[aout]`);
+    // single source → pad to (at least) the video length, then relabel.
+    filters.push(`${mixLabels[0]}apad[aout]`);
   }
 
   const ffArgs = [
