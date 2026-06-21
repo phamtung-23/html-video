@@ -22,8 +22,12 @@
   /* ===== Top toolbar ===== */
   .toolbar { background: var(--bg-panel); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 18px; padding: 0 22px; min-width: 0; }
+  /* Width so the brand's right divider lines up exactly with the sidebar's
+     right border: sidebar is 200px from the page's left edge, the toolbar has
+     22px of left padding → 200 - 22 = 178px. */
   .toolbar .brand { display: flex; align-items: center; gap: 10px; padding-right: 14px;
-    align-self: stretch; border-right: 1px solid var(--border); margin-right: 6px; }
+    width: calc(200px - 22px); align-self: stretch;
+    border-right: 1px solid var(--border); margin-right: 6px; }
   .toolbar .brand .logo { width: 28px; height: 28px; border-radius: var(--radius-sm);
     background: var(--accent); color: var(--accent-fg); display: grid; place-items: center;
     font-weight: 700; font-family: var(--font-serif); font-size: 16px; }
