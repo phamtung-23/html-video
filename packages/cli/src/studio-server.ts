@@ -3255,6 +3255,15 @@ async function runSplitMultiFrameGenerate(
   if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
     throw new Error('graph has no nodes');
   }
+  // The per-frame duration the user confirmed on the format card is the SOURCE
+  // OF TRUTH — the agent must not re-time the clip with its own guesses. Force
+  // every node to it so the export matches what the user saw ("Mỗi khung × Số
+  // khung = Tổng thời lượng", e.g. 5s × 4 = 20s) instead of stretching to a
+  // long per-frame animation. (The frame-HTML prompt below also tells the agent
+  // to finish each animation within this budget so nothing is cut mid-reveal.)
+  for (const n of graph.nodes) {
+    (n as { durationSec?: number }).durationSec = perFrameDurationSec;
+  }
   await ctx.orchestrator.writeContentGraph(projectId, graph);
   onProgress(`✓ Lên storyboard xong: ${graph.nodes.length} khung (${graph.intent})`);
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
@@ -3280,6 +3289,7 @@ async function runSplitMultiFrameGenerate(
       fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`);
     }
     fp.push(`Duration: ${node.durationSec ?? perFrameDurationSec}s`);
+    fp.push(`HARD TIMING: this frame is on screen for EXACTLY ${node.durationSec ?? perFrameDurationSec}s. Every reveal/animation MUST finish and the frame be fully readable by ~${Math.max(1, (node.durationSec ?? perFrameDurationSec) - 1)}s — do NOT schedule any entrance, transition or loop that runs past ${node.durationSec ?? perFrameDurationSec}s, or it will be cut off mid-motion. Prefer quick, snappy entrances (each ≤1.5s, lightly staggered) over one long sequential timeline; the final state should simply hold until the end.`);
     fp.push(`Type: ${pickedType}`);
     if (styleLabel) fp.push(`Style: ${styleLabel}`);
     fp.push(`Resolution: ${aspect} (${resolution})`);
