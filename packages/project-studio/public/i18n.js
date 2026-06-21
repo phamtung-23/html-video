@@ -171,6 +171,9 @@ const DICT = {
 
     'language.label': 'Ngôn ngữ',
 
+    'card.freeform_placeholder': '…hoặc tự nhập câu trả lời',
+    'card.send': '↵ Gửi',
+
     'settings.title': 'Cài đặt',
     'settings.tab.agent': 'Agent',
     'settings.tab.language': 'Ngôn ngữ',
@@ -380,6 +383,9 @@ const DICT = {
     'modal.new.failed': 'Failed to create project',
 
     'language.label': 'Language',
+
+    'card.freeform_placeholder': '…or type your own answer',
+    'card.send': '↵ Send',
 
     'settings.title': 'Settings',
     'settings.tab.agent': 'Agent',

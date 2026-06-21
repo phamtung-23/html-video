@@ -1012,8 +1012,8 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           if (rewriteInputs) {
             const n = (project.frames ?? []).length || Number(phaseInfo.inputs.collected?.frame_count ?? '3');
             const notice = restyleOnly
-              ? `🎨 沿用文案，按新风格重做全部 ${n} 帧…\n`
-              : `🔄 基于新内容重做全部 ${n} 帧（已手动修改过的帧会被覆盖）…\n`;
+              ? `🎨 Giữ nội dung, làm lại toàn bộ ${n} khung theo phong cách mới…\n`
+              : `🔄 Làm lại toàn bộ ${n} khung theo nội dung mới (các khung đã sửa tay sẽ bị ghi đè)…\n`;
             assistantText += notice;
             sseWrite({ type: 'text', chunk: notice });
           }
@@ -1082,7 +1082,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           // that only ships the user's request + a tiny instruction. This
           // catches the 6-8KB-prompt empty-reply mode.
           if (assistantText.trim().length < 32 && phaseInfo.phase === 'iterate' && priorHtml) {
-            sseWrite({ type: 'text', chunk: '\n↻ 第一次输出为空，重试中…\n' });
+            sseWrite({ type: 'text', chunk: '\n↻ Lần đầu trả về rỗng, đang thử lại…\n' });
             // Retry without inlining the prior HTML — same observation as
             // the iterate prompt itself: claude --print silently no-ops
             // when fed multi-KB of HTML to rewrite.
@@ -1818,7 +1818,7 @@ type ConvPhase =
 
 /** Did the user pick the "choose from design templates" style option? */
 function isFromTemplateStyle(style: string): boolean {
-  return /^从设计模板选|design template|pick.*template|from template/i.test(style.trim());
+  return /^从设计模板选|design template|pick.*template|from template|mẫu thiết kế|từ mẫu/i.test(style.trim());
 }
 
 interface PhaseInputs {
@@ -1890,11 +1890,11 @@ function detectPhase(
     if (last?.metaPhase === 'edit-menu') {
       // Route the menu choice. Match by label keywords (works for clicks, which
       // send the option label, and for free text).
-      if (/风格|style|视觉|配色|换个?样子/i.test(trimmed)) {
+      if (/风格|style|视觉|配色|换个?样子|phong cách|màu|hình ảnh/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'style', inputs, postGen: true };
       }
-      if (/时长|时间|duration|长度|快|慢|秒|节奏/i.test(trimmed)) {
+      if (/时长|时间|duration|长度|快|慢|秒|节奏|thời lượng|nhịp|giây|nhanh|chậm/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'format', inputs, postGen: true };
       }
@@ -1931,15 +1931,15 @@ function detectPhase(
       return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
     }
     // Direct shortcuts when the instruction is unambiguous about WHAT to change.
-    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(trimmed)) {
+    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss|phong cách|kiểu|màu sắc|mẫu/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'style', inputs, postGen: true };
     }
-    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒/i.test(trimmed)) {
+    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒|thời lượng|nhịp độ|nhanh hơn|chậm hơn|ngắn hơn|dài hơn|bao nhiêu giây/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'format', inputs, postGen: true };
     }
-    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(trimmed)) {
+    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite|nội dung|chủ đề|đổi thành|viết lại|giới thiệu/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = [...collectContentTurns(history), trimmed].filter((s) => !isControlPhrase(s));
       return { phase: 'iterate-content', inputs, postGen: true };
@@ -1992,13 +1992,13 @@ function detectPhase(
     inputs.pickedType = lastCardPickByPhase(history, 'type');
     inputs.contentTurns = collectContentTurns(history);
     // Picked a built-in style instead → use it.
-    if (!isFromTemplateStyle(trimmed) && !/^我已选好模板|继续|done|ready|next$/i.test(trimmed)) {
+    if (!isFromTemplateStyle(trimmed) && !/^我已选好模板|继续|Đã chọn mẫu|tiếp tục|done|ready|next$/i.test(trimmed)) {
       inputs.pickedStyle = trimmed;
       return { phase: 'format', inputs };
     }
     // Said "I've picked one / continue": proceed only if a template is now set.
     if (hasTemplate) {
-      inputs.pickedStyle = '从设计模板选';
+      inputs.pickedStyle = 'Chọn từ mẫu thiết kế';
       return { phase: 'format', inputs };
     }
     return { phase: 'need-template', inputs }; // still none → ask again
@@ -2009,7 +2009,7 @@ function detectPhase(
   if (prev.kind === 'content-question') {
     // User is replying to content question. Could be (a) more content, or
     // (b) a "skip / I'm done" signal.
-    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed)
+    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道|bỏ qua|xong|tiếp|tiếp tục|không biết)$/i.test(trimmed)
       || trimmed.length <= 3;
     // "Free rein" answers — the user is handing the subject's details to the
     // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机"). These should advance the
@@ -2018,8 +2018,8 @@ function detectPhase(
     // Substring match (not anchored) with a length guard so it doesn't swallow a
     // real sentence that merely contains "随便".
     const isFreeRein =
-      trimmed.length <= 16 &&
-      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(trimmed);
+      trimmed.length <= 20 &&
+      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你|tùy bạn|tuỳ bạn|tùy ý|tuỳ ý|bạn quyết|bạn tự|ngẫu nhiên|sao cũng được|gì cũng được|tự do)/i.test(trimmed);
     // With source material attached there's nothing to collect — advance as
     // soon as the user says anything (the article already is the content).
     if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
@@ -2106,8 +2106,8 @@ function lastCardPickByPhase(history: ChatMessage[], phase: string): string | un
  *  not be collected as content — otherwise they end up as on-screen text. */
 function isControlPhrase(t: string): boolean {
   const s = t.trim().toLowerCase().replace(/[。.!！~\s]+$/u, '');
-  if (s.length > 12) return false; // real content is longer; keep it
-  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认)$/u.test(s);
+  if (s.length > 14) return false; // real content is longer; keep it
+  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|tiếp|tiếp tục|bắt đầu|tạo|tạo đi|tiếp theo|được|xác nhận|đồng ý)$/u.test(s);
 }
 
 function collectContentTurns(history: ChatMessage[]): string[] {
@@ -2268,10 +2268,10 @@ export function parseFormatReply(text: string): Record<string, string> | undefin
   // --- aspect: explicit ratio (16:9 / 9:16 / 1:1 / 4:5) or a keyword ---
   const ratio = /\b(16\s*[:：]\s*9|9\s*[:：]\s*16|1\s*[:：]\s*1|4\s*[:：]\s*5)\b/.exec(t);
   const ratioNorm = ratio?.[1]?.replace(/\s/g, '').replace('：', ':');
-  if (ratioNorm === '16:9' || /横屏|landscape|宽屏/i.test(t)) out.aspect = '16:9 横屏';
-  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical/i.test(t)) out.aspect = '9:16 手机竖屏';
-  else if (ratioNorm === '1:1' || /方形|square/i.test(t)) out.aspect = '1:1 方形';
-  else if (ratioNorm === '4:5' || /小红书|xiaohongshu|rednote/i.test(t)) out.aspect = '4:5 小红书';
+  if (ratioNorm === '16:9' || /横屏|landscape|宽屏|ngang/i.test(t)) out.aspect = '16:9 Ngang';
+  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical|dọc|doc/i.test(t)) out.aspect = '9:16 Dọc';
+  else if (ratioNorm === '1:1' || /方形|square|vuông|vuong/i.test(t)) out.aspect = '1:1 Vuông';
+  else if (ratioNorm === '4:5' || /小红书|xiaohongshu|rednote/i.test(t)) out.aspect = '4:5 RedNote';
 
   // --- duration: a number directly tied to seconds (5s / 5秒 / 5 sec) ---
   const dur = /(\d{1,3})\s*(?:s\b|秒|sec)/i.exec(t);
@@ -2401,7 +2401,7 @@ function parseGraphJsonTolerant(raw: string): unknown {
  *  Inverting the test makes new/renamed multi-frame types default correctly. */
 function isMultiFrameType(pickedType: string): boolean {
   if (!pickedType) return false;
-  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still/i.test(pickedType);
+  const single = /单帧|单画面|标题卡|封面|logo|title.?card|single.?frame|cover|still|một khung|tiêu đề/i.test(pickedType);
   return !single;
 }
 
@@ -2430,11 +2430,11 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     em.push('```hv-options');
     em.push(JSON.stringify({
       meta: { phase: 'edit-menu' },
-      question: '想改哪方面？',
+      question: 'Bạn muốn đổi gì?',
       options: [
-        { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
-        { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
-        { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
+        { label: '🎨 Đổi phong cách', hint: 'Giữ nội dung, thay phong cách hình ảnh' },
+        { label: '✏️ Đổi nội dung', hint: 'Sửa lời / chủ đề / viết lại kịch bản' },
+        { label: '⏱️ Đổi thời lượng', hint: 'Chỉnh thời lượng mỗi khung / nhịp độ' },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2457,12 +2457,12 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     opener.push('```hv-options');
     opener.push(JSON.stringify({
       meta: { phase: 'type' },
-      question: '想做哪种内容？',
+      question: 'Bạn muốn làm loại nội dung nào?',
       options: [
-        { label: '单帧标题卡',   hint: 'logo / 封面 / 单画面 - 5-10s' },
-        { label: '多帧预告片',   hint: '产品 / 活动 teaser, 3-6 帧' },
-        { label: '数据大字报',   hint: '1-2 个核心数字, 社媒爆款风' },
-        { label: '概念解说短片', hint: '几帧讲清一个 idea / feature' },
+        { label: 'Thẻ tiêu đề một khung', hint: 'logo / bìa / một khung - 5-10s' },
+        { label: 'Teaser nhiều khung',    hint: 'sản phẩm / sự kiện, 3-6 khung' },
+        { label: 'Poster dữ liệu',        hint: '1-2 con số chủ đạo, phong cách viral' },
+        { label: 'Video giải thích ngắn', hint: 'vài khung làm rõ một ý / tính năng' },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2491,7 +2491,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       p.push('');
       for (const a of attachments) p.push(...renderAttachment(a));
       p.push('');
-      p.push(`In the user's language, write ONE short line that names the actual topic/title you read from the source and states the video will be built from it (e.g. "好，我读完了《…》这篇文章 — 这就基于它生成。下一步选风格。"). Do NOT ask the user to retype or summarize anything. End with this hidden marker on its own line:`);
+      p.push(`In the user's language, write ONE short line that names the actual topic/title you read from the source and states the video will be built from it (e.g. "Ok, mình đã đọc bài "…" — sẽ dựng video dựa trên đó. Bước tiếp theo: chọn phong cách."). Do NOT ask the user to retype or summarize anything. End with this hidden marker on its own line:`);
       p.push('<!-- hv-phase:content-question -->');
       p.push('');
       p.push(`Plain text + the marker only. NO code blocks. NO questions. Do NOT return an empty reply.`);
@@ -2521,7 +2521,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       p.push(`The user has already shared:`);
       for (const t of turns) p.push(`  - ${t.slice(0, 200)}`);
       p.push('');
-      p.push(`Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "好，我有思路了，下一步是风格" / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`);
+      p.push(`Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "Ok, mình đủ ý rồi, bước tiếp theo là phong cách." / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`);
     }
     p.push('');
     p.push(`Reply in plain text + the marker. NO code blocks. Do NOT return an empty reply.`);
@@ -2536,13 +2536,13 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     p.push('```hv-options');
     p.push(JSON.stringify({
       meta: { phase: 'style' },
-      question: '视觉风格怎么定？',
+      question: 'Chọn phong cách hình ảnh?',
       options: [
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
-        { label: '从设计模板选',       hint: '上方挑一个现成模板' },
+        { label: 'Cyberpunk glitch',    hint: 'neon / nhiễu / tương phản cao' },
+        { label: 'Swiss minimalist',    hint: 'lưới / sans-serif / nhiều khoảng trắng' },
+        { label: 'Warm-grain magazine', hint: 'chất giấy / serif / tông ấm' },
+        { label: 'Mono brutalist',      hint: 'đen trắng / khối / chữ đậm' },
+        { label: 'Chọn từ mẫu thiết kế', hint: 'chọn một mẫu có sẵn ở trên' },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2557,17 +2557,17 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
   // ---- need-template: user chose "from design template" but hasn't picked one
   if (phase === 'need-template') {
     const p: string[] = [];
-    p.push(`The user chose "从设计模板选" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar 模板 / Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead. JSON shape EXACTLY — keep "meta" verbatim:`);
+    p.push(`The user chose "Chọn từ mẫu thiết kế" (use a design template) but has NOT selected a template yet. Do NOT generate. Tell them — in their language, ONE short friendly line — to pick a template from the top-bar "Mẫu" / Template dropdown, then offer this card so they can confirm once they've picked, or switch to a built-in style instead. JSON shape EXACTLY — keep "meta" verbatim:`);
     p.push('```hv-options');
     p.push(JSON.stringify({
       meta: { phase: 'need-template' },
-      question: '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
+      question: 'Hãy chọn một mẫu ở "Mẫu" trên thanh trên cùng, chọn xong bấm tiếp tục bên dưới; hoặc chọn thẳng một phong cách dựng sẵn:',
       options: [
-        { label: '我已选好模板，继续', hint: '用顶部选中的模板生成' },
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
+        { label: 'Đã chọn mẫu, tiếp tục', hint: 'dùng mẫu đã chọn ở trên để tạo' },
+        { label: 'Cyberpunk glitch',    hint: 'neon / nhiễu / tương phản cao' },
+        { label: 'Swiss minimalist',    hint: 'lưới / sans-serif / nhiều khoảng trắng' },
+        { label: 'Warm-grain magazine', hint: 'chất giấy / serif / tông ấm' },
+        { label: 'Mono brutalist',      hint: 'đen trắng / khối / chữ đậm' },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2586,7 +2586,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       : (inputs.pickedType ?? '');
     const isMulti = !!pickedType && isMultiFrameType(pickedType);
     const defaults = {
-      aspect:      pre.aspect      ?? '16:9 横屏',
+      aspect:      pre.aspect      ?? '16:9 Ngang',
       duration:    pre.duration    ?? (isMulti ? '15' : '5'),
       frame_count: pre.frame_count ?? (isMulti ? '4' : '1'),
       // Per-frame pacing default 4s — comfortable, avoids the "rushed" feel a
@@ -2606,16 +2606,16 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     p.push('```hv-form');
     p.push(JSON.stringify({
       meta: { phase: 'format' },
-      title: isEdit ? '改一下格式' : (isMulti ? '最后一步：尺寸 / 每帧时长 / 帧数' : '最后一步：选个尺寸 / 时长'),
+      title: isEdit ? 'Chỉnh lại định dạng' : (isMulti ? 'Bước cuối: kích thước / thời lượng mỗi khung / số khung' : 'Bước cuối: chọn kích thước / thời lượng'),
       fields: [
         {
-          key: 'aspect', label: '画面尺寸', kind: 'buttons', required: true,
+          key: 'aspect', label: 'Kích thước khung', kind: 'buttons', required: true,
           default: defaults.aspect,
           options: [
-            { value: '16:9 横屏',     label: '16:9 横屏' },
-            { value: '9:16 手机竖屏', label: '9:16 竖屏' },
-            { value: '1:1 方形',      label: '1:1 方形' },
-            { value: '4:5 小红书',    label: '4:5 小红书' },
+            { value: '16:9 Ngang',  label: '16:9 Ngang' },
+            { value: '9:16 Dọc',    label: '9:16 Dọc' },
+            { value: '1:1 Vuông',   label: '1:1 Vuông' },
+            { value: '4:5 RedNote', label: '4:5 RedNote' },
           ],
         },
         // Multi-frame: pace by PER-FRAME duration (total = per_frame × frames,
@@ -2623,13 +2623,13 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
         ...(isMulti
           ? [
               {
-                key: 'per_frame', label: '每帧时长 (秒)', kind: 'buttons', required: true,
+                key: 'per_frame', label: 'Thời lượng mỗi khung (giây)', kind: 'buttons', required: true,
                 default: defaults.per_frame,
-                hint: '总时长 = 每帧时长 × 帧数',
+                hint: 'Tổng = thời lượng mỗi khung × số khung',
                 options: ['2', '3', '4', '5', '6', '8'].map((v) => ({ value: v, label: `${v}s` })),
               },
               {
-                key: 'frame_count', label: '帧数', kind: 'buttons', required: true,
+                key: 'frame_count', label: 'Số khung', kind: 'buttons', required: true,
                 default: defaults.frame_count,
                 options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({ value: v, label: v })),
               },
@@ -2637,18 +2637,18 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
               // bars grow) instead of static hyperframes HTML. Default OFF —
               // Remotion is a user-chosen enhancement, the AI never flips it.
               {
-                key: 'remotion_enhance', label: '⚡ 数据帧用 Remotion', kind: 'buttons', required: false,
-                default: '关',
-                hint: '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
+                key: 'remotion_enhance', label: '⚡ Khung dữ liệu dùng Remotion', kind: 'buttons', required: false,
+                default: 'Tắt',
+                hint: 'Khung dữ liệu render bằng Remotion gốc (số chạy / cột mọc); các khung khác vẫn dùng Hyperframes',
                 options: [
-                  { value: '关', label: '关' },
-                  { value: '开', label: '开 · Remotion' },
+                  { value: 'Tắt', label: 'Tắt' },
+                  { value: 'Bật', label: 'Bật · Remotion' },
                 ],
               },
             ]
           : [
               {
-                key: 'duration', label: '时长 (秒)', kind: 'buttons', required: true,
+                key: 'duration', label: 'Thời lượng (giây)', kind: 'buttons', required: true,
                 default: defaults.duration,
                 options: ['3', '5', '10', '15'].map((v) => ({ value: v, label: `${v}s` })),
               },
@@ -2669,14 +2669,14 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const pickedStyle = lastCardPickByPhase(history, 'style') ?? '';
     const contentTurns = collectContentTurns(history);
     const summaryRows: { label: string; value: string }[] = [];
-    if (pickedType) summaryRows.push({ label: '类型', value: pickedType });
+    if (pickedType) summaryRows.push({ label: 'Loại', value: pickedType });
     if (contentTurns.length > 0) {
-      summaryRows.push({ label: '内容', value: contentTurns.join(' · ').slice(0, 240) });
+      summaryRows.push({ label: 'Nội dung', value: contentTurns.join(' · ').slice(0, 240) });
     }
-    if (pickedStyle) summaryRows.push({ label: '风格', value: pickedStyle });
-    if (tmpl) summaryRows.push({ label: '模板', value: tmpl.name });
+    if (pickedStyle) summaryRows.push({ label: 'Phong cách', value: pickedStyle });
+    if (tmpl) summaryRows.push({ label: 'Mẫu', value: tmpl.name });
     const labelMap: Record<string, string> = {
-      aspect: '尺寸', duration: '时长', frame_count: '帧数', per_frame: '每帧时长',
+      aspect: 'Kích thước', duration: 'Thời lượng', frame_count: 'Số khung', per_frame: 'Mỗi khung',
     };
     // When pacing by per-frame, show per-frame + frames + derived total.
     const pf = Number(collected.per_frame ?? '') || 0;
@@ -2687,10 +2687,10 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     }
     if (pf > 0) {
       const frames = Number(collected.frame_count ?? '4') || 4;
-      summaryRows.push({ label: '总时长', value: `${pf * frames}s` });
+      summaryRows.push({ label: 'Tổng thời lượng', value: `${pf * frames}s` });
     }
     if (attachments.length > 0) {
-      summaryRows.push({ label: '素材', value: attachments.map((a) => a.filename).join(', ') });
+      summaryRows.push({ label: 'Tư liệu', value: attachments.map((a) => a.filename).join(', ') });
     }
 
     const p: string[] = [];
@@ -2699,7 +2699,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     p.push('```hv-confirm');
     p.push(JSON.stringify({
       meta: { phase: 'confirm' },
-      title: '按这些信息生成？',
+      title: 'Tạo video với các thông tin này?',
       summary: summaryRows,
       actions: ['generate', 'edit'],
     }, null, 2));
@@ -2739,7 +2739,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     else if (aspect === '1:1') resolution = '1080×1080';
     else if (aspect === '4:5') resolution = '1080×1350';
 
-    const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
+    const styleLabel = pickedStyle && isFromTemplateStyle(pickedStyle)
       ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
       : pickedStyle;
 
@@ -3115,7 +3115,7 @@ async function runSplitMultiFrameGenerate(
   // Opt-in (format card): render data frames natively with Remotion. When on,
   // the planner must give every data node structured items, and after each
   // data frame's HTML is written we enhance it in place (best-effort).
-  const enhanceData = (collected.remotion_enhance ?? '').startsWith('开');
+  const enhanceData = (collected.remotion_enhance ?? '').startsWith('Bật');
   // Prefer per-frame pacing (total = per_frame × frames) — set by the format
   // card so a short total ÷ many frames can't produce a rushed clip. Fall back
   // to total ÷ frames for older projects that only stored `duration`.
@@ -3142,7 +3142,7 @@ async function runSplitMultiFrameGenerate(
     }
   }
 
-  const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
+  const styleLabel = pickedStyle && isFromTemplateStyle(pickedStyle)
     ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
     : pickedStyle;
 
@@ -3156,10 +3156,10 @@ async function runSplitMultiFrameGenerate(
       throw new Error('restyle requested but the project has no existing storyboard to reuse');
     }
     graph = existing as import('@html-video/content-graph').ContentGraph;
-    onProgress(`✓ 沿用现有文案：${graph.nodes.length} 帧`);
+    onProgress(`✓ Giữ nội dung hiện có: ${graph.nodes.length} khung`);
     onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   } else {
-  onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
+  onProgress(`📋 Lên storyboard ${frameCountReq} khung…`);
   const graphPromptParts: string[] = [];
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
   graphPromptParts.push('');
@@ -3256,7 +3256,7 @@ async function runSplitMultiFrameGenerate(
     throw new Error('graph has no nodes');
   }
   await ctx.orchestrator.writeContentGraph(projectId, graph);
-  onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
+  onProgress(`✓ Lên storyboard xong: ${graph.nodes.length} khung (${graph.intent})`);
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   }
 
@@ -3264,7 +3264,7 @@ async function runSplitMultiFrameGenerate(
   for (let i = 0; i < graph.nodes.length; i++) {
     const node = graph.nodes[i]!;
     const nodeId = node.id;
-    onProgress(`🎬 生成第 ${i + 1}/${graph.nodes.length} 帧 (${nodeId})…`);
+    onProgress(`🎬 Tạo khung ${i + 1}/${graph.nodes.length} (${nodeId})…`);
     onSse({ type: 'frame_started', node_id: nodeId, order: i, total: graph.nodes.length });
 
     const frameContext = describeNode(node);
@@ -3346,7 +3346,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
 
     // One retry on empty: shorter prompt, just the skeleton call.
     if (!extracted) {
-      onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
+      onProgress(`  ↻ Khung ${i + 1} thử đầu rỗng, thử lại…`);
       const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
       frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
       extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
@@ -3368,19 +3368,19 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
         // frame is flagged remotion but has no previewMp4Path, so the studio
         // tries to play a <video> that 404s → black thumbnail + preview.
         await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(`  ⚡ 第 ${i + 1} 帧渲染 Remotion 动效 (数字滚动 / 柱子生长)…`);
+        onProgress(`  ⚡ Khung ${i + 1} render hiệu ứng Remotion (số chạy / cột mọc)…`);
         await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
         onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
-        onProgress(`  ⚠️ 第 ${i + 1} 帧无法用 Remotion 增强（回落静态 HTML）：${msg}`);
+        onProgress(`  ⚠️ Khung ${i + 1} không tăng cường được bằng Remotion (quay lại HTML tĩnh): ${msg}`);
         // Revert the engine flag so the frame falls back to its hyperframes HTML
         // (the <iframe> path) instead of showing a broken <video>.
         try { await ctx.orchestrator.unenhanceFrame(projectId, nodeId); } catch { /* ignore */ }
       }
     }
-    onProgress(`  ✓ 第 ${i + 1}/${graph.nodes.length} 帧完成 (${nodeId})`);
+    onProgress(`  ✓ Xong khung ${i + 1}/${graph.nodes.length} (${nodeId})`);
     onSse({ type: 'frame_done', node_id: nodeId, order: i, total: graph.nodes.length });
   }
 

@@ -1798,8 +1798,8 @@ function renderOptionCard(opts, picked, msgIdx) {
   const freeformHtml = allowFreeform && !picked ? `
     <div class="freeform-input">
       <textarea data-freeform-msg="${msgIdx}" rows="1"
-        placeholder="…or type your own answer"></textarea>
-      <button class="freeform-send" data-freeform-msg="${msgIdx}" disabled>↵ Send</button>
+        placeholder="${esc(t('card.freeform_placeholder'))}"></textarea>
+      <button class="freeform-send" data-freeform-msg="${msgIdx}" disabled>${esc(t('card.send'))}</button>
     </div>` : '';
   return `<div class="opt-card">
     <div class="question">${esc(opts.question)}</div>
