@@ -1,14 +1,13 @@
 /**
  * @html-video/core — Edge-TTS speech provider (free, no API key).
  *
- * A drop-in alternative to the MiniMax narration path ({@link generateTts}) that
- * shells out to Microsoft's `edge-tts` CLI. Edge-TTS streams from the public
- * Edge "read aloud" endpoint: it needs network access but NO account, NO key,
- * and no per-character billing — so the studio can produce voiceover for free.
+ * The studio's narration engine. It shells out to Microsoft's `edge-tts` CLI,
+ * which streams from the public Edge "read aloud" endpoint: it needs network
+ * access but NO account, NO key, and no per-character billing — so the studio
+ * produces voiceover for free.
  *
- * It returns the same {@link MinimaxAudioResult} shape as the MiniMax provider,
- * so callers (studio-server / CLI) can swap providers without touching the
- * asset-store or ffmpeg mux that consumes the result.
+ * It returns a {@link TtsAudioResult} (bytes + metadata) that callers
+ * (studio-server / CLI) hand straight to the asset-store and ffmpeg mux.
  *
  * Binary resolution (first hit wins, see {@link resolveEdgeTtsCommand}):
  *   1. EDGE_TTS_BIN env (explicit path to an `edge-tts` executable)
@@ -26,7 +25,18 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HtmlVideoError } from './errors.js';
-import type { MinimaxAudioResult } from './minimax.js';
+
+/** Result of a text-to-speech synthesis: decoded audio bytes plus metadata. */
+export interface TtsAudioResult {
+  /** Decoded audio bytes (MP3). */
+  bytes: Buffer;
+  /** File extension to store under. */
+  ext: '.mp3';
+  /** Human-readable note of what was produced (provider · voice · size). */
+  providerNote: string;
+  /** Reported duration in seconds, if known. */
+  durationSec?: number;
+}
 
 /** Friendly built-in Vietnamese voices, surfaced so the UI/CLI can offer them. */
 export const EDGE_TTS_VIETNAMESE_VOICES = {
@@ -99,8 +109,8 @@ export function resolveEdgeTtsCommand(opts?: {
   return null;
 }
 
-/** Convert a MiniMax-style numeric `speed` (1.0 = normal) into edge-tts's
- *  `--rate ±N%` string. 1.1 → "+10%", 0.9 → "-10%", 1.0 → "+0%". */
+/** Convert a numeric `speed` (1.0 = normal) into edge-tts's `--rate ±N%`
+ *  string. 1.1 → "+10%", 0.9 → "-10%", 1.0 → "+0%". */
 function speedToRate(speed: number): string {
   const pct = Math.round((speed - 1) * 100);
   return `${pct >= 0 ? '+' : ''}${pct}%`;
@@ -124,14 +134,13 @@ function probeDurationSec(file: string): number | undefined {
 /**
  * Synthesize narration with Edge-TTS and return MP3 bytes.
  *
- * Mirrors {@link generateTts} (MiniMax) so it's a drop-in narration provider.
  * `speed`/`rate`, `pitch` and `volume` map to edge-tts CLI flags; an explicit
  * `rate`/`pitch`/`volume` string wins over the numeric `speed` convenience.
  */
 export async function generateTtsEdge(opts: {
   text: string;
   voiceId?: string;
-  /** MiniMax-compatible numeric speed (1.0 = normal). Mapped to --rate. */
+  /** Numeric speed (1.0 = normal). Mapped to --rate. */
   speed?: number;
   /** edge-tts --rate, e.g. "+10%". Overrides `speed` when set. */
   rate?: string;
@@ -143,7 +152,7 @@ export async function generateTtsEdge(opts: {
   projectRoot?: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
-}): Promise<MinimaxAudioResult> {
+}): Promise<TtsAudioResult> {
   const text = (opts.text || '').trim();
   if (!text) {
     throw new HtmlVideoError('invalid-input', 'narration text is empty');

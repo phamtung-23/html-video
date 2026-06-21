@@ -101,15 +101,13 @@ export async function runDoctor(ctx: CliContext): Promise<void> {
       name: 'edge-tts',
       status: 'ok',
       value: tts.edgeVoice,
-      detail: `free narration available; narration engine = ${tts.effective ?? 'none'}`,
+      detail: 'free narration available (Edge-TTS)',
     });
   } else {
     checks.push({
       name: 'edge-tts',
       status: 'warning',
-      detail: tts.minimaxConfigured
-        ? 'Edge-TTS not installed (MiniMax key present, so narration still works).'
-        : 'No narration engine. Install free Edge-TTS: pipx install edge-tts',
+      detail: 'Narration disabled. Install free Edge-TTS: pipx install edge-tts',
       install_hint: 'pipx install edge-tts  (or: python3 -m pip install edge-tts)',
     });
   }

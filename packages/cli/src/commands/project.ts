@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { CliContext } from '../context.js';
 import { fail, ok, progress } from '../output.js';
-import { generateTts, generateTtsEdge } from '@html-video/core';
+import { generateTtsEdge } from '@html-video/core';
 
 export async function projectCreate(
   ctx: CliContext,
@@ -156,9 +156,9 @@ export async function projectRender(
 }
 
 /**
- * Generate narration for a project and attach it as the soundtrack voiceover.
- * Defaults to the free, key-less Edge-TTS engine (auto-falls back to it when no
- * MiniMax key is set). The next `project-render` mixes the narration into the MP4.
+ * Generate narration for a project and attach it as the soundtrack voiceover,
+ * using the free, key-less Edge-TTS engine. The next `project-render` mixes the
+ * narration into the MP4.
  */
 export async function projectNarrate(
   ctx: CliContext,
@@ -167,7 +167,6 @@ export async function projectNarrate(
     text?: string;
     textFile?: string;
     voice?: string;
-    provider?: string;
     volumeDb?: number;
   },
 ): Promise<void> {
@@ -180,37 +179,18 @@ export async function projectNarrate(
   text = text.trim();
   if (!text) fail('invalid-input', 'provide narration text via --text or --text-file');
 
-  // Resolve the engine: explicit --provider, else config/auto (prefers MiniMax
-  // when a key is set, otherwise the free Edge-TTS).
-  let provider: 'edge' | 'minimax' | null;
-  if (opts.provider === 'edge') {
-    provider = ctx.mediaConfig.edgeAvailable() ? 'edge' : null;
-  } else if (opts.provider === 'minimax') {
-    provider = ctx.mediaConfig.resolveMinimax() ? 'minimax' : null;
-  } else {
-    provider = ctx.mediaConfig.resolveNarrationProvider();
-  }
-  if (!provider) {
+  if (!ctx.mediaConfig.edgeAvailable()) {
     fail(
       'render-failed',
-      opts.provider === 'minimax'
-        ? 'MiniMax key not configured — set OD_MINIMAX_API_KEY or use --provider edge (free).'
-        : 'Edge-TTS not found. Install it (free, no key): `pipx install edge-tts` or `python3 -m pip install edge-tts`.',
+      'Edge-TTS not found. Install it (free, no key): `pipx install edge-tts` or `python3 -m pip install edge-tts`.',
     );
   }
 
-  const nar =
-    provider === 'edge'
-      ? await generateTtsEdge({
-          text,
-          voiceId: opts.voice ?? ctx.mediaConfig.getEdgeVoice(),
-          projectRoot: ctx.projectRoot,
-        })
-      : await generateTts({
-          text,
-          ...(opts.voice !== undefined && { voiceId: opts.voice }),
-          creds: ctx.mediaConfig.resolveMinimax()!,
-        });
+  const nar = await generateTtsEdge({
+    text,
+    voiceId: opts.voice ?? ctx.mediaConfig.getEdgeVoice(),
+    projectRoot: ctx.projectRoot,
+  });
 
   const { asset } = await ctx.orchestrator.addBufferAsset(
     id,
@@ -230,7 +210,7 @@ export async function projectNarrate(
 
   ok({
     project_id: id,
-    provider,
+    provider: 'edge',
     asset_id: asset.id,
     duration_sec: nar.durationSec ?? null,
     provider_note: nar.providerNote,

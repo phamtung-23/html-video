@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic, generateTtsEdge } from '@html-video/core';
+import { AssetStore, generateTtsEdge } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -408,17 +408,15 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return;
       }
 
-      // Generate soundtrack: background music (MiniMax music_generation) and/or
-      // narration (MiniMax t2a_v2). Streams SSE progress like export. The
-      // generated MP3s are stored as project assets; their ids land in
-      // project.soundtrack so exportMp4 mixes them in. Generation itself does
-      // NOT need ffmpeg — only the export-time mux does.
+      // Generate narration (free Edge-TTS) and store it as a project asset; its
+      // id lands in project.soundtrack so exportMp4 mixes it in. Streams SSE
+      // progress like export. Generation itself does NOT need ffmpeg — only the
+      // export-time mux does.
       const genAudioMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/generate-audio$/);
       if (genAudioMatch && genAudioMatch[1] && m === 'POST') {
         const projectId = genAudioMatch[1];
         const body = (await readBody(req)) as {
-          music?: { prompt?: string; instrumental?: boolean; volumeDb?: number };
-          narration?: { text?: string; voiceId?: string; volumeDb?: number; languageBoost?: string; byFrame?: Record<string, string>; provider?: 'edge' | 'minimax' };
+          narration?: { text?: string; voiceId?: string; volumeDb?: number; byFrame?: Record<string, string> };
           fadeInSec?: number;
           fadeOutSec?: number;
         };
@@ -433,104 +431,50 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         };
         try {
           sse({ type: 'audio_started' });
-          // Narration can use the free, key-less Edge-TTS provider; only music
-          // (and optionally narration) needs a MiniMax key. So we no longer hard
-          // -fail when no key is set — we resolve each track's engine instead.
-          const minimaxCreds = ctx.mediaConfig.resolveMinimax();
 
           const project = await ctx.orchestrator.load(projectId);
           const soundtrack = { ...(project.soundtrack ?? {}) };
-          const wantMusic = !!body.music?.prompt?.trim();
           const wantNarration = !!body.narration?.text?.trim();
-          if (!wantMusic && !wantNarration) {
-            sse({ type: 'audio_failed', message: 'Nothing to generate — provide a music prompt and/or narration text.' });
+          if (!wantNarration) {
+            sse({ type: 'audio_failed', message: 'Nothing to generate — provide narration text.' });
             res.end();
             return;
           }
 
-          // Resolve the narration engine: explicit request → configured/auto
-          // (auto prefers MiniMax when a key is set, else free Edge-TTS).
-          const narrationProvider = wantNarration
-            ? (body.narration?.provider ?? ctx.mediaConfig.resolveNarrationProvider())
-            : null;
-
-          // If the ONLY thing requested can't be produced, fail with a clear hint
-          // rather than silently doing nothing.
-          if (wantMusic && !minimaxCreds && !wantNarration) {
+          // Narration uses the free, key-less Edge-TTS engine.
+          if (!ctx.mediaConfig.edgeAvailable()) {
             sse({
               type: 'audio_failed',
               message:
-                'Background music needs a MiniMax key — add it in Settings → Audio (or set OD_MINIMAX_API_KEY). Narration can use the free Edge-TTS engine.',
-            });
-            res.end();
-            return;
-          }
-          if (wantNarration && !narrationProvider) {
-            sse({
-              type: 'audio_failed',
-              message:
-                'No narration engine available — install Edge-TTS (free, no key): `pipx install edge-tts`, or add a MiniMax key in Settings → Audio.',
+                'No narration engine available — install Edge-TTS (free, no key): `pipx install edge-tts`.',
             });
             res.end();
             return;
           }
 
-          if (wantMusic && !minimaxCreds) {
-            // Narration is still possible via Edge-TTS — skip music, keep going.
-            sse({ type: 'audio_progress', stage: 'music', message: 'skipping background music — MiniMax key not configured.' });
-          } else if (wantMusic) {
-            sse({ type: 'audio_progress', stage: 'music', message: 'generating background music…' });
-            const music = await generateMusic({
-              prompt: body.music!.prompt!.trim(),
-              instrumental: body.music!.instrumental ?? true,
-              creds: minimaxCreds!,
-            });
-            const { asset } = await ctx.orchestrator.addBufferAsset(
-              projectId,
-              music.bytes,
-              music.ext,
-              `background music · ${body.music!.prompt!.trim().slice(0, 60)}`,
-            );
-            soundtrack.musicAssetId = asset.id;
-            soundtrack.musicPrompt = body.music!.prompt!.trim();
-            if (body.music!.volumeDb !== undefined) soundtrack.musicVolumeDb = body.music!.volumeDb;
-            sse({ type: 'audio_progress', stage: 'music', message: music.providerNote, asset_id: asset.id });
-          }
-
-          if (wantNarration) {
+          {
             const narText = body.narration!.text!.trim();
-            sse({ type: 'audio_progress', stage: 'narration', message: `generating narration (${narrationProvider})…` });
-            let nar: Awaited<ReturnType<typeof generateTts>>;
-            if (narrationProvider === 'edge') {
-              // The Studio UI may carry a MiniMax voiceId (e.g. "male-qn-qingse")
-              // that Edge-TTS can't use. Only honor a voiceId that looks like an
-              // Edge voice (locale-prefixed, e.g. "vi-VN-HoaiMyNeural"); else use
-              // the configured/default Edge voice.
-              const reqVoice = body.narration!.voiceId;
-              const edgeVoice = reqVoice && /^[a-z]{2}-[A-Z]{2}-/.test(reqVoice)
-                ? reqVoice
-                : ctx.mediaConfig.getEdgeVoice();
-              nar = await generateTtsEdge({
-                text: narText,
-                voiceId: edgeVoice,
-                projectRoot: ctx.projectRoot,
-              });
-            } else {
-              nar = await generateTts({
-                text: narText,
-                ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
-                ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
-                creds: minimaxCreds!,
-              });
-            }
+            sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
+            // Honor a requested voice only when it looks like an Edge voice
+            // (locale-prefixed, e.g. "vi-VN-HoaiMyNeural"); else use the
+            // configured/default Edge voice.
+            const reqVoice = body.narration!.voiceId;
+            const edgeVoice = reqVoice && /^[a-z]{2}-[A-Z]{2}-/.test(reqVoice)
+              ? reqVoice
+              : ctx.mediaConfig.getEdgeVoice();
+            const nar = await generateTtsEdge({
+              text: narText,
+              voiceId: edgeVoice,
+              projectRoot: ctx.projectRoot,
+            });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               nar.bytes,
               nar.ext,
-              `narration · ${body.narration!.text!.trim().slice(0, 60)}`,
+              `narration · ${narText.slice(0, 60)}`,
             );
             soundtrack.narrationAssetId = asset.id;
-            soundtrack.narrationText = body.narration!.text!.trim();
+            soundtrack.narrationText = narText;
             if (body.narration!.byFrame) soundtrack.narrationByFrame = body.narration!.byFrame;
             if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
             sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
@@ -657,36 +601,16 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return json(res, 200, { ok: true, target, platform });
       }
 
-      // MiniMax audio API config — GET status (masked), POST to save, DELETE to clear.
-      // Lets users configure the key in the Settings UI instead of env vars.
-      if (url.pathname === '/api/config/minimax' && m === 'GET') {
-        return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
-      }
-      if (url.pathname === '/api/config/minimax' && m === 'POST') {
-        const body = (await readBody(req)) as { apiKey?: string; baseUrl?: string };
-        const key = (body.apiKey ?? '').trim();
-        if (!key) return json(res, 400, { error: 'apiKey is required' });
-        ctx.mediaConfig.setMinimax(key, body.baseUrl);
-        return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
-      }
-      if (url.pathname === '/api/config/minimax' && m === 'DELETE') {
-        ctx.mediaConfig.clearMinimax();
-        return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
-      }
-
-      // Narration TTS provider config — GET status, POST to set provider/voice.
-      // `edge` is the free, key-less engine; `auto` prefers MiniMax when a key
-      // is configured and otherwise falls back to Edge-TTS.
+      // Narration TTS config — GET status, POST to set the Edge-TTS voice.
+      // Narration uses the free, key-less Edge-TTS engine (no credentials).
       if (url.pathname === '/api/config/tts' && m === 'GET') {
         return json(res, 200, ctx.mediaConfig.getTtsStatus());
       }
       if (url.pathname === '/api/config/tts' && m === 'POST') {
-        const body = (await readBody(req)) as { provider?: 'auto' | 'edge' | 'minimax'; edgeVoice?: string };
-        const provider = body.provider;
-        if (provider !== 'auto' && provider !== 'edge' && provider !== 'minimax') {
-          return json(res, 400, { error: "provider must be 'auto', 'edge', or 'minimax'" });
-        }
-        ctx.mediaConfig.setTts(provider, body.edgeVoice);
+        const body = (await readBody(req)) as { edgeVoice?: string };
+        const voice = (body.edgeVoice ?? '').trim();
+        if (!voice) return json(res, 400, { error: 'edgeVoice is required' });
+        ctx.mediaConfig.setEdgeVoice(voice);
         return json(res, 200, ctx.mediaConfig.getTtsStatus());
       }
 

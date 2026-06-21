@@ -14,16 +14,10 @@ export type {
   ProjectOrchestratorDeps,
 } from './project.js';
 export {
-  resolveMinimaxCredentials,
-  generateTts,
-  generateMusic,
-} from './minimax.js';
-export type { MinimaxCredentials, MinimaxAudioResult } from './minimax.js';
-export {
   generateTtsEdge,
   resolveEdgeTtsCommand,
   edgeTtsVenvBin,
   EDGE_TTS_VIETNAMESE_VOICES,
   EDGE_TTS_DEFAULT_VOICE,
 } from './edge-tts.js';
-export type { EdgeTtsCommand } from './edge-tts.js';
+export type { EdgeTtsCommand, TtsAudioResult } from './edge-tts.js';

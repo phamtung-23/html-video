@@ -189,11 +189,10 @@ cli
   });
 
 cli
-  .command('project-narrate <id>', 'Generate narration (free Edge-TTS by default) and attach it')
+  .command('project-narrate <id>', 'Generate narration (free Edge-TTS) and attach it')
   .option('--text <text>', 'Narration text')
   .option('--text-file <path>', 'Read narration text from a file')
-  .option('--voice <voice>', 'Voice id (Edge, e.g. vi-VN-HoaiMyNeural / vi-VN-NamMinhNeural)')
-  .option('--provider <name>', 'edge | minimax | auto (default: auto)')
+  .option('--voice <voice>', 'Edge voice id (e.g. vi-VN-HoaiMyNeural / vi-VN-NamMinhNeural)')
   .option('--volume-db <db>', 'Narration gain in dB at mux time')
   .action(async (id: string, opts: any) => {
     setJsonMode(!!opts.json);
@@ -202,7 +201,6 @@ cli
       ...(opts.text !== undefined && { text: opts.text }),
       ...(opts.textFile !== undefined && { textFile: opts.textFile }),
       ...(opts.voice !== undefined && { voice: opts.voice }),
-      ...(opts.provider !== undefined && { provider: opts.provider }),
       ...(opts.volumeDb !== undefined && { volumeDb: Number(opts.volumeDb) }),
     });
   });

@@ -11,31 +11,11 @@ document.addEventListener('hv-locale-change', () => {
 });
 document.documentElement.lang = getLocale();
 
-// Background-music style presets. Clicking a chip fills the prompt textarea
-// with a tuned English MiniMax prompt (the model follows English best); the
-// label is localized via i18n (soundtrack.preset_<key>). Still editable after.
-const MUSIC_PRESETS = [
-  { key: 'energetic', prompt: 'energetic upbeat electronic, driving beat, punchy synths, modern and confident' },
-  { key: 'calm',      prompt: 'calm ambient pad, soft piano, slow and soothing, gentle and warm' },
-  { key: 'tech',      prompt: 'sleek tech corporate, pulsing synth arpeggio, clean minimal beat, futuristic' },
-  { key: 'narrative', prompt: 'cinematic storytelling score, emotional strings, building piano, reflective' },
-  { key: 'minimal',   prompt: 'minimal lo-fi, sparse beat, mellow keys, understated background bed' },
-  { key: 'epic',      prompt: 'epic orchestral, powerful drums, soaring brass, dramatic and inspiring' },
-];
-
-// Narration voices. `key` maps to a localized label (soundtrack.voice_<key>).
-// The locale-prefixed ids (e.g. vi-VN-HoaiMyNeural) route to the free, key-less
-// Edge-TTS engine; the bare ids are MiniMax voice_ids (need a MiniMax key).
-// Edge voices are listed first so the free option is the default selection.
+// Narration voices (free, key-less Edge-TTS). `key` maps to a localized label
+// (soundtrack.voice_<key>); the value is the Edge voice id.
 const NARRATION_VOICES = [
   { key: 'vi_female_edge', voiceId: 'vi-VN-HoaiMyNeural' },
   { key: 'vi_male_edge',   voiceId: 'vi-VN-NamMinhNeural' },
-  { key: 'male_warm',     voiceId: 'male-qn-qingse' },
-  { key: 'male_pro',      voiceId: 'male-qn-jingying' },
-  { key: 'male_deep',     voiceId: 'audiobook_male_1' },
-  { key: 'female_anchor', voiceId: 'presenter_female' },
-  { key: 'female_mature', voiceId: 'female-yujie' },
-  { key: 'female_sweet',  voiceId: 'female-shaonv' },
 ];
 
 const API = {
@@ -793,24 +773,10 @@ function renderMain() {
               <span class="soundtrack-badge">${t('soundtrack.optional')}</span>
             </summary>
             <div class="soundtrack-body">
-              <!-- ===== Background music: its own input + generate ===== -->
-              <div class="st-section">
-                <div class="st-section-title">${t('soundtrack.music_label')}</div>
-                <div class="st-presets" id="st-music-presets">
-                  ${MUSIC_PRESETS.map((p) => `<button type="button" class="st-preset" data-prompt="${p.prompt}">${t('soundtrack.preset_' + p.key)}</button>`).join('')}
-                </div>
-                <textarea id="st-music-prompt" rows="2" placeholder="${t('soundtrack.music_placeholder')}"></textarea>
-                <div class="st-vol-row"><label>${t('soundtrack.music_volume')} <input type="range" id="st-music-vol" min="-40" max="0" value="-18" /><b id="st-music-vol-val">-18 dB</b></label></div>
-                <div class="st-section-actions">
-                  <button class="st-generate" id="btn-st-gen-music">${t('soundtrack.gen_music')}</button>
-                  <span class="st-status" id="st-music-status"></span>
-                </div>
-              </div>
-
-              <!-- ===== Narration / voiceover ===== -->
+              <!-- ===== Narration / voiceover (free Edge-TTS) ===== -->
               <!-- Two explicit steps so users don't confuse "write the text"
                    (AI drafts words, no audio) with "synthesize the voice"
-                   (calls MiniMax, produces an mp3). See issues #4 / #5. -->
+                   (Edge-TTS produces an mp3). -->
               <div class="st-section st-narration">
                 <div class="st-section-title">${t('soundtrack.narration_label')}</div>
 
@@ -911,37 +877,23 @@ function renderMain() {
 }
 
 /**
- * Soundtrack panel: generate MiniMax music + narration, stream SSE progress,
- * preview the resulting MP3s. The generated tracks are stored on the project's
+ * Soundtrack panel: generate free Edge-TTS narration, stream SSE progress,
+ * preview the resulting MP3. The narration is stored on the project's
  * soundtrack and mixed in automatically at export time.
  */
 function wireSoundtrackPanel() {
   const panel = document.getElementById('soundtrack-panel');
   if (!panel) return;
-  const musicPrompt = document.getElementById('st-music-prompt');
   const narrationText = document.getElementById('st-narration-text');
-  const musicVol = document.getElementById('st-music-vol');
   const narrationVol = document.getElementById('st-narration-vol');
-  const musicVolVal = document.getElementById('st-music-vol-val');
   const narrationVolVal = document.getElementById('st-narration-vol-val');
-  const genMusicBtn = document.getElementById('btn-st-gen-music');
   const genNarrationBtn = document.getElementById('btn-st-gen-narration');
   const clearBtn = document.getElementById('btn-st-clear');
-  const musicStatusEl = document.getElementById('st-music-status');
   const narrationStatusEl = document.getElementById('st-narration-status');
   const previewEl = document.getElementById('st-preview');
   const draftFrameBtn = document.getElementById('btn-st-draft-frame');
   const draftAllBtn = document.getElementById('btn-st-draft-all');
   const whichEl = document.getElementById('st-narration-which');
-
-  // Music style presets: click fills the prompt textarea (editable after).
-  document.querySelectorAll('#st-music-presets .st-preset').forEach((btn) => {
-    btn.onclick = () => {
-      musicPrompt.value = btn.dataset.prompt || '';
-      document.querySelectorAll('#st-music-presets .st-preset').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-    };
-  });
 
   // ---- Per-frame narration model ----------------------------------------
   // narrationByFrame: { [graphNodeId]: text }. The textarea always shows the
@@ -1065,42 +1017,31 @@ function wireSoundtrackPanel() {
     };
   }
 
-  // Restore previously generated soundtrack (music prompt + audio previews).
+  // Restore previously generated soundtrack (narration preview + volume).
   const st = state.selected?.soundtrack;
   if (st) {
-    if (st.musicPrompt) musicPrompt.value = st.musicPrompt;
-    if (typeof st.musicVolumeDb === 'number') musicVol.value = String(st.musicVolumeDb);
     if (typeof st.narrationVolumeDb === 'number') narrationVol.value = String(st.narrationVolumeDb);
     renderSoundtrackPreview(st);
   }
-  musicVolVal.textContent = `${musicVol.value} dB`;
   narrationVolVal.textContent = `${narrationVol.value} dB`;
-  musicVol.oninput = () => { musicVolVal.textContent = `${musicVol.value} dB`; };
   narrationVol.oninput = () => { narrationVolVal.textContent = `${narrationVol.value} dB`; };
 
   clearBtn.onclick = async () => {
     if (!state.selected) return;
     await fetch(`/api/projects/${state.selected.id}/soundtrack`, { method: 'DELETE' });
-    musicPrompt.value = '';
     narrationText.value = '';
     previewEl.innerHTML = '';
-    if (musicStatusEl) musicStatusEl.textContent = '';
     if (narrationStatusEl) narrationStatusEl.textContent = '';
     if (state.selected) delete state.selected.soundtrack;
   };
 
-  // Music and narration generate INDEPENDENTLY. `kind` decides which part of
-  // the generate-audio payload we send + which button/status to drive.
-  async function runGenerate(kind /* 'music' | 'narration' */) {
+  // Synthesize narration via the free Edge-TTS engine.
+  async function runGenerate() {
     if (!state.selected) return;
-    const btn = kind === 'music' ? genMusicBtn : genNarrationBtn;
-    const statusEl = kind === 'music' ? musicStatusEl : narrationStatusEl;
+    const btn = genNarrationBtn;
+    const statusEl = narrationStatusEl;
     const payload = {};
-    if (kind === 'music') {
-      const mp = musicPrompt.value.trim();
-      if (!mp) { if (statusEl) statusEl.textContent = t('soundtrack.empty_music'); return; }
-      payload.music = { prompt: mp, instrumental: true, volumeDb: Number(musicVol.value) };
-    } else {
+    {
       // Stitch every frame's line in order into one narration track.
       const stitched = sortedFrames
         .map((f) => (state._narrationByFrame[f.graphNodeId] || '').trim())
@@ -1147,7 +1088,7 @@ function wireSoundtrackPanel() {
           let ev;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
           if (ev.type === 'audio_progress' && statusEl) {
-            statusEl.textContent = ev.stage === 'music' ? t('soundtrack.progress_music') : t('soundtrack.progress_narration');
+            statusEl.textContent = t('soundtrack.progress_narration');
           } else if (ev.type === 'audio_done') {
             if (statusEl) statusEl.textContent = t('soundtrack.done');
             if (ev.project) state.selected = ev.project;
@@ -1164,8 +1105,7 @@ function wireSoundtrackPanel() {
       clearBtn.disabled = false;
     }
   }
-  if (genMusicBtn) genMusicBtn.onclick = () => runGenerate('music');
-  if (genNarrationBtn) genNarrationBtn.onclick = () => runGenerate('narration');
+  if (genNarrationBtn) genNarrationBtn.onclick = () => runGenerate();
 }
 
 function renderSoundtrackPreview(soundtrack) {
@@ -1177,9 +1117,7 @@ function renderSoundtrackPreview(soundtrack) {
     return a?.path ? `/asset?path=${encodeURIComponent(a.path)}` : null;
   };
   const blocks = [];
-  const musicSrc = soundtrack.musicAssetId && srcFor(soundtrack.musicAssetId);
   const narrSrc = soundtrack.narrationAssetId && srcFor(soundtrack.narrationAssetId);
-  if (musicSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.music_ready')}</span><audio controls src="${musicSrc}"></audio></div>`);
   if (narrSrc) blocks.push(`<div class="st-track"><span>${t('soundtrack.narration_ready')}</span><audio controls src="${narrSrc}"></audio></div>`);
   previewEl.innerHTML = blocks.join('');
 }
@@ -2971,100 +2909,9 @@ function closeSettingsModal() {
 function renderSettingsPanel(tab) {
   const panel = document.getElementById('settings-panel');
   if (!panel) return;
-  if (tab === 'audio') return renderSettingsAudio(panel);
   if (tab === 'language') return renderSettingsLanguage(panel);
   if (tab === 'about') return renderSettingsAbout(panel);
   return renderSettingsAgent(panel);
-}
-
-async function renderSettingsAudio(panel) {
-  panel.innerHTML = `
-    <h3>${esc(t('settings.audio.title'))}</h3>
-    <div class="panel-sub">${esc(t('settings.audio.subtitle'))}</div>
-    <div class="audio-config" id="audio-config">
-      <div class="audio-status" id="audio-status">${esc(t('settings.audio.loading'))}</div>
-      <label class="audio-field">
-        <span>${esc(t('settings.audio.api_key'))}</span>
-        <input type="password" id="mm-api-key" placeholder="${esc(t('settings.audio.api_key_placeholder'))}" autocomplete="off" />
-      </label>
-      <label class="audio-field">
-        <span>${esc(t('settings.audio.region'))}</span>
-        <div class="audio-region" id="mm-region">
-          <button type="button" class="st-preset" data-url="https://api.minimax.io/v1">${esc(t('settings.audio.region_intl'))}</button>
-          <button type="button" class="st-preset" data-url="https://api.minimaxi.com/v1">${esc(t('settings.audio.region_cn'))}</button>
-        </div>
-      </label>
-      <label class="audio-field">
-        <span>${esc(t('settings.audio.base_url'))}</span>
-        <input type="text" id="mm-base-url" placeholder="https://api.minimax.io/v1" autocomplete="off" />
-      </label>
-      <div class="audio-actions">
-        <button class="audio-save primary-action" id="mm-save" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.audio.save'))}</button>
-        <button class="audio-clear" id="mm-clear">${esc(t('settings.audio.clear'))}</button>
-        <span class="audio-save-state" id="mm-save-state"></span>
-      </div>
-      <p class="panel-sub" style="font-size:11.5px;margin-top:4px">${esc(t('settings.audio.hint'))}</p>
-    </div>
-  `;
-
-  const statusEl = panel.querySelector('#audio-status');
-  const keyInput = panel.querySelector('#mm-api-key');
-  const baseInput = panel.querySelector('#mm-base-url');
-  const saveState = panel.querySelector('#mm-save-state');
-
-  const refresh = async () => {
-    try {
-      const s = await fetch('/api/config/minimax').then((r) => r.json());
-      if (s.configured) {
-        const src = s.source === 'env' ? t('settings.audio.source_env') : t('settings.audio.source_config');
-        statusEl.innerHTML = `<span class="agent-status-dot ok"></span>${esc(t('settings.audio.configured', { key: s.maskedKey, source: src }))}`;
-        if (s.baseUrl) baseInput.value = s.baseUrl;
-      } else {
-        statusEl.innerHTML = `<span class="agent-status-dot missing"></span>${esc(t('settings.audio.not_configured'))}`;
-      }
-    } catch {
-      statusEl.textContent = t('settings.audio.not_configured');
-    }
-  };
-  await refresh();
-
-  // Region quick-pick: fills the Base URL with the correct regional endpoint.
-  // MiniMax keys are region-bound (an api.minimax.io key won't auth against
-  // api.minimaxi.com and vice-versa), so picking the wrong region is the #1
-  // cause of voiceover failures (issue #4).
-  panel.querySelectorAll('#mm-region .st-preset').forEach((btn) => {
-    btn.onclick = () => {
-      baseInput.value = btn.dataset.url;
-      panel.querySelectorAll('#mm-region .st-preset').forEach((b) => b.classList.toggle('active', b === btn));
-    };
-  });
-
-  panel.querySelector('#mm-save').onclick = async () => {
-    const apiKey = keyInput.value.trim();
-    if (!apiKey) { saveState.textContent = t('settings.audio.need_key'); return; }
-    saveState.textContent = t('settings.audio.saving');
-    try {
-      const r = await fetch('/api/config/minimax', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ apiKey, baseUrl: baseInput.value.trim() }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      keyInput.value = '';
-      saveState.textContent = t('settings.audio.saved');
-      await refresh();
-    } catch (e) {
-      saveState.textContent = t('settings.audio.save_failed', { message: (e?.message ?? e) });
-    }
-  };
-
-  panel.querySelector('#mm-clear').onclick = async () => {
-    await fetch('/api/config/minimax', { method: 'DELETE' });
-    keyInput.value = '';
-    baseInput.value = '';
-    saveState.textContent = '';
-    await refresh();
-  };
 }
 
 function renderSettingsAgent(panel) {
@@ -3201,13 +3048,13 @@ function renderSettingsLanguage(panel) {
     <h3>${esc(t('settings.language.title'))}</h3>
     <div class="panel-sub">${esc(t('settings.language.subtitle'))}</div>
     <div class="lang-options">
+      <button data-lang="vi" class="${cur === 'vi' ? 'active' : ''}">
+        <div class="lang-name">${esc(t('settings.language.vi'))}</div>
+        <div class="lang-sub">${esc(t('settings.language.vi_sub'))}</div>
+      </button>
       <button data-lang="en" class="${cur === 'en' ? 'active' : ''}">
         <div class="lang-name">${esc(t('settings.language.en'))}</div>
         <div class="lang-sub">${esc(t('settings.language.en_sub'))}</div>
-      </button>
-      <button data-lang="zh" class="${cur === 'zh' ? 'active' : ''}">
-        <div class="lang-name">${esc(t('settings.language.zh'))}</div>
-        <div class="lang-sub">${esc(t('settings.language.zh_sub'))}</div>
       </button>
     </div>
   `;

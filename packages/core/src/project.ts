@@ -110,7 +110,7 @@ export class ProjectOrchestrator {
   }
 
   /**
-   * Store generated audio bytes (MP3 from MiniMax) as a project asset and
+   * Store generated audio bytes (MP3) as a project asset and
    * return the created Asset so the caller can reference it in `soundtrack`.
    * Unlike addFileAsset, this does NOT downgrade status — attaching a
    * soundtrack to an already-previewed video shouldn't invalidate the render.
@@ -663,7 +663,7 @@ export class ProjectOrchestrator {
     onProgress?.(99, 'mixing audio');
     const { rename } = await import('node:fs/promises');
     const tmpOut = `${outputPath}.muxed.mp4`;
-    // MiniMax music is a fixed ~50s clip regardless of request; `-shortest`
+    // A background-music asset may be longer than the video; `-shortest`
     // already trims it to the video length, but a hard cut sounds abrupt.
     // Default a gentle fade-out (≤ a third of the clip, capped 1.5s) when the
     // user hasn't set one and we know the video length.
