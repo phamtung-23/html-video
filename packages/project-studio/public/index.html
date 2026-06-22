@@ -583,8 +583,21 @@
     color: var(--text); resize: none; min-height: 40px; max-height: 220px;
     padding: 4px 4px; line-height: 1.5; }
   .composer .actions { display: flex; align-items: center; gap: 6px; }
-  .composer .hint { font-size: 10.5px; color: var(--text-faint);
-    font-family: var(--font-mono); margin-right: auto; padding-left: 4px; }
+  /* Help icon replacing the inline hint: shows the hint as a tooltip on hover/focus. */
+  .composer .composer-help { position: relative; margin-right: auto; display: inline-grid;
+    place-items: center; width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--border); color: var(--text-faint); font-size: 11px;
+    font-family: var(--font-mono); cursor: help; user-select: none; }
+  .composer .composer-help:hover, .composer .composer-help:focus-visible {
+    color: var(--text); border-color: var(--accent); outline: none; }
+  .composer .composer-help[data-tip]:hover::after,
+  .composer .composer-help[data-tip]:focus-visible::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0;
+    width: max-content; max-width: 320px; white-space: normal; text-align: left;
+    background: var(--bg-panel); color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 10px; font-size: 11px; line-height: 1.5;
+    font-family: var(--font-mono); box-shadow: 0 6px 20px rgba(0,0,0,.4); z-index: 50;
+    pointer-events: none; }
   .composer .icon-btn { background: transparent; border: 0; color: var(--text-muted);
     cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); font-size: 13px; }
   .composer .icon-btn:hover { color: var(--text); background: var(--bg-subtle); }

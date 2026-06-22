@@ -749,7 +749,7 @@ function renderMain() {
               <div class="actions">
                 <button class="icon-btn" id="btn-attach" title="${t('composer.attach')}">📎</button>
                 <input type="file" id="file-input" multiple style="display:none" />
-                <span class="hint">${t('composer.hint')}</span>
+                <span class="composer-help" tabindex="0" role="img" aria-label="${esc(t('composer.hint'))}" data-tip="${esc(t('composer.hint'))}">?</span>
                 <button class="send-btn" id="btn-send" disabled>${t('composer.send')}</button>
               </div>
             </div>
