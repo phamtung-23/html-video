@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="vi" class="dark uk-theme-zinc uk-radii-md uk-shadows-sm uk-font-sm">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Franken UI · PoC (Settings) — html-video studio</title>
+
+  <!-- Google Fonts (same as the studio) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Franken UI (a.k.a. 0build) — HTML-first, no build step. Precompiled CSS + IIFE JS via CDN. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/css/core.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/css/utilities.min.css" />
+  <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/core.iife.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/icon.iife.js"></script>
+
+  <style>
+    /* Brand: re-point Franken's primary token to the studio mint green, and the
+       surfaces to the studio's near-black, so the PoC reads as "our" product. */
+    html.dark {
+      --background: 0 0% 4%;        /* #0a0a0a */
+      --foreground: 60 6% 96%;      /* #f4f4f2 */
+      --card: 0 0% 8%;              /* #141414 */
+      --card-foreground: 60 6% 96%;
+      --muted: 60 2% 11%;           /* #1c1c1c */
+      --muted-foreground: 60 2% 60%;
+      --border: 60 4% 16%;          /* #2a2a28 */
+      --input: 60 4% 16%;
+      --primary: 157 76% 57%;       /* mint #3ce6ac */
+      --primary-foreground: 60 6% 4%;
+      --ring: 157 76% 57%;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: hsl(var(--background));
+      color: hsl(var(--foreground)); margin: 0; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 64px; }
+    .poc-banner { font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      color: hsl(var(--primary)); border: 1px solid hsl(var(--border));
+      border-radius: 8px; padding: 8px 12px; margin-bottom: 24px; }
+    .poc-h { font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+      color: hsl(var(--muted-foreground)); font-family: 'JetBrains Mono', monospace;
+      margin: 28px 0 12px; }
+    /* Settings modal mock — two panes like the real Settings */
+    .settings { display: grid; grid-template-columns: 200px 1fr; gap: 0;
+      border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden;
+      background: hsl(var(--card)); }
+    .settings-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px;
+      border-right: 1px solid hsl(var(--border)); }
+    .settings-body { padding: 22px; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+      border-radius: 8px; font-size: 13px; color: hsl(var(--muted-foreground));
+      background: transparent; border: 0; cursor: pointer; text-align: left; width: 100%; }
+    .nav-item:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+    .nav-item.active { background: hsl(var(--primary) / .14); color: hsl(var(--primary)); }
+    .agent-row { display: grid; grid-template-columns: 36px 1fr auto; align-items: center;
+      gap: 12px; }
+    .agent-ico { width: 36px; height: 36px; border-radius: 8px; display: grid;
+      place-items: center; background: hsl(var(--muted)); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .dot.ok { background: hsl(var(--primary)); }
+    .dot.off { background: hsl(var(--muted-foreground)); }
+    .muted { color: hsl(var(--muted-foreground)); }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="poc-banner">⚡ Franken UI v2.1.2 · bản thử (PoC) — HTML thuần, nạp qua CDN, KHÔNG build. Trang này độc lập, không ảnh hưởng studio thật.</div>
+
+    <h1 class="uk-h2" style="margin:0 0 4px">Cài đặt</h1>
+    <p class="muted" style="margin:0 0 20px;font-size:13px">Xem thử giao diện Settings nếu dựng bằng Franken UI.</p>
+
+    <!-- ===== Settings modal mock ===== -->
+    <div class="settings">
+      <nav class="settings-nav">
+        <button class="nav-item active">
+          <uk-icon icon="bot"></uk-icon> Agent
+        </button>
+        <button class="nav-item">
+          <uk-icon icon="languages"></uk-icon> Ngôn ngữ
+        </button>
+        <button class="nav-item">
+          <uk-icon icon="info"></uk-icon> Giới thiệu
+        </button>
+      </nav>
+
+      <div class="settings-body">
+        <h3 class="uk-h4" style="margin:0 0 4px">Agent</h3>
+        <p class="muted" style="margin:0 0 16px;font-size:13px">Chọn runtime biến cuộc trò chuyện của bạn thành HTML.</p>
+
+        <!-- mode tabs as a segmented button group -->
+        <div class="uk-btn-group" style="margin-bottom:18px">
+          <button class="uk-btn uk-btn-primary uk-btn-sm">CLI cục bộ</button>
+          <button class="uk-btn uk-btn-default uk-btn-sm">BYOK (API)</button>
+        </div>
+
+        <div class="uk-flex uk-flex-between uk-flex-middle" style="margin-bottom:10px">
+          <span class="muted" style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase">Agent đã phát hiện (3)</span>
+          <button class="uk-btn uk-btn-ghost uk-btn-sm"><uk-icon icon="refresh-cw"></uk-icon> Quét lại</button>
+        </div>
+
+        <div class="uk-flex uk-flex-column" style="gap:10px">
+          <!-- in use -->
+          <div class="uk-card uk-card-body" style="padding:14px">
+            <div class="agent-row">
+              <div class="agent-ico"><uk-icon icon="terminal"></uk-icon></div>
+              <div>
+                <div style="font-weight:600;font-size:13px"><span class="dot ok"></span> Claude Code</div>
+                <div class="muted" style="font-size:12px">Claude Code (claude --print) · v2.1.185</div>
+              </div>
+              <div class="row">
+                <button class="uk-btn uk-btn-default uk-btn-sm">Kiểm tra</button>
+                <span class="uk-label uk-label-primary">Đang dùng</span>
+              </div>
+            </div>
+          </div>
+          <!-- available -->
+          <div class="uk-card uk-card-body" style="padding:14px">
+            <div class="agent-row">
+              <div class="agent-ico"><uk-icon icon="terminal"></uk-icon></div>
+              <div>
+                <div style="font-weight:600;font-size:13px"><span class="dot ok"></span> Cursor Agent</div>
+                <div class="muted" style="font-size:12px">Cursor command line · 2025.09.18</div>
+              </div>
+              <div class="row">
+                <button class="uk-btn uk-btn-default uk-btn-sm">Kiểm tra</button>
+                <button class="uk-btn uk-btn-primary uk-btn-sm">Dùng</button>
+              </div>
+            </div>
+          </div>
+          <!-- not installed -->
+          <div class="uk-card uk-card-body" style="padding:14px;opacity:.7">
+            <div class="agent-row">
+              <div class="agent-ico"><uk-icon icon="terminal"></uk-icon></div>
+              <div>
+                <div style="font-weight:600;font-size:13px"><span class="dot off"></span> Gemini CLI</div>
+                <div class="muted" style="font-size:12px">Chưa cài</div>
+              </div>
+              <div class="row">
+                <a class="uk-btn uk-btn-text uk-btn-sm" href="#">cài đặt ↗</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Component palette (so you can see Franken UI's look) ===== -->
+    <div class="poc-h">Nút (button variants)</div>
+    <div class="row">
+      <button class="uk-btn uk-btn-primary">Primary</button>
+      <button class="uk-btn uk-btn-default">Default</button>
+      <button class="uk-btn uk-btn-secondary">Secondary</button>
+      <button class="uk-btn uk-btn-destructive">Destructive</button>
+      <button class="uk-btn uk-btn-ghost">Ghost</button>
+      <button class="uk-btn uk-btn-text">Text</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="uk-btn uk-btn-primary uk-btn-xs">XS</button>
+      <button class="uk-btn uk-btn-primary uk-btn-sm">SM</button>
+      <button class="uk-btn uk-btn-primary uk-btn-md">MD</button>
+      <button class="uk-btn uk-btn-primary uk-btn-lg">LG</button>
+    </div>
+
+    <div class="poc-h">Biểu mẫu (form controls)</div>
+    <div class="uk-flex uk-flex-column" style="gap:12px;max-width:420px">
+      <input class="uk-input" type="text" placeholder="Tên dự án — vd: Docker Intro" />
+      <select class="uk-select">
+        <option>16:9 Ngang</option>
+        <option>9:16 Dọc</option>
+        <option>1:1 Vuông</option>
+      </select>
+      <textarea class="uk-textarea" rows="2" placeholder="Mô tả video…"></textarea>
+      <label class="row" style="gap:10px">
+        <input class="uk-toggle-switch uk-toggle-switch-primary" type="checkbox" checked />
+        <span style="font-size:13px">Khung dữ liệu dùng Remotion</span>
+      </label>
+    </div>
+
+    <div class="poc-h">Ngôn ngữ (language tab)</div>
+    <div class="row">
+      <button class="uk-btn uk-btn-primary">Tiếng Việt · VI</button>
+      <button class="uk-btn uk-btn-default">English · EN</button>
+    </div>
+  </div>
+</body>
+</html>
