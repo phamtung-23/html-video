@@ -4,10 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>html-video · Studio</title>
-<link rel="stylesheet" href="/tokens.css?v=0.9-hyperframes" />
+<!-- Apply the saved theme before first paint to avoid a light→dark flash.
+     'light'/'dark' force a theme; anything else (incl. 'auto'/absent) follows the OS. -->
+<script>try{var _t=localStorage.getItem('hv-theme');if(_t==='light'||_t==='dark')document.documentElement.dataset.theme=_t;}catch(e){}</script>
+<link rel="stylesheet" href="/tokens.css?v=0.9-theme" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
 <style>
@@ -16,6 +19,15 @@
     height: 100vh; overflow: hidden; font-size: 13.5px; line-height: 1.5; }
   button, input, textarea, select { font-family: inherit; font-size: inherit; }
   a { color: var(--accent); }
+
+  /* Standard inline-SVG icons (paths in app.js ICON_PATHS + static markup here).
+     Sized in em so they scale with the host font-size; stroke inherits the text
+     color via currentColor. `.ico-lead` adds a gap for "icon + label" buttons. */
+  .ico-svg { width: 1.05em; height: 1.05em; flex: 0 0 auto; display: inline-block;
+    vertical-align: -0.16em; }
+  .ico-lead { margin-right: .42em; }
+  .ico-trail { margin-left: .42em; }
+  .ico > .ico-svg { vertical-align: middle; }
 
   .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
 
@@ -28,9 +40,10 @@
   .toolbar .brand { display: flex; align-items: center; gap: 10px; padding-right: 14px;
     width: calc(200px - 22px); align-self: stretch;
     border-right: 1px solid var(--border); margin-right: 6px; }
-  .toolbar .brand .logo { width: 28px; height: 28px; border-radius: var(--radius-sm);
-    background: var(--accent); color: var(--accent-fg); display: grid; place-items: center;
-    font-weight: 700; font-family: var(--font-serif); font-size: 16px; }
+  .toolbar .brand .logo { height: 30px; border-radius: var(--radius-sm);
+    background: #fff; border: 1px solid var(--border); display: grid; place-items: center;
+    overflow: hidden; padding: 0 3px; flex: 0 0 auto; }
+  .toolbar .brand .logo img { height: 24px; width: auto; display: block; }
   .toolbar .brand h1 { font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
   .toolbar .brand .v { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
   .toolbar .name-input { background: transparent; border: 0; color: var(--text);
@@ -66,7 +79,7 @@
   .agent-pill .agent-dot.missing { background: var(--text-faint); }
   .agent-pill .agent-pill-logo { display: inline-flex; }
   .agent-pill .agent-pill-logo img { width: 16px; height: 16px; object-fit: contain;
-    display: block; }
+    display: block; background: #fff; border-radius: 4px; padding: 1px; box-sizing: border-box; }
   .agent-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
     min-width: 240px; background: var(--bg-panel); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 6px;
@@ -86,8 +99,16 @@
     flex: 0 0 auto; background: var(--text-faint); }
   .agent-menu .agent-menu-item .mi-dot.ok { background: var(--green); }
   .agent-menu .agent-menu-item .mi-logo img { width: 16px; height: 16px;
-    object-fit: contain; display: block; }
+    object-fit: contain; display: block; background: #fff; border-radius: 4px;
+    padding: 1px; box-sizing: border-box; }
   .agent-menu .agent-menu-item .mi-logo { width: 16px; display: inline-flex; flex: 0 0 auto; }
+  /* Fallback icons (gear/cloud SVG, currentColor) would inherit the muted menu
+     text color and vanish on the dark dropdown — give them the same light chip
+     as brand logos so they stay legible in both themes. */
+  .agent-menu .agent-menu-item .mi-logo .ico-svg,
+  .agent-pill .agent-pill-logo .ico-svg {
+    background: #fff; color: #1a1a1a; border-radius: 4px;
+    padding: 1px; box-sizing: border-box; width: 16px; height: 16px; }
   .agent-menu .agent-menu-item .mi-name { flex: 1; min-width: 0; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .agent-menu .agent-menu-item .mi-tag { font-size: 10px; color: var(--text-muted);
@@ -151,22 +172,30 @@
     text-align: left; font-size: 12.5px; font-family: inherit;
     transition: background .12s, color .12s; }
   .settings-nav-item:hover { background: var(--bg-subtle); color: var(--text); }
+  .settings-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .settings-nav-item.active { background: var(--accent-soft); color: var(--accent);
-    font-weight: 500; }
+    font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+  .settings-nav-item.active:hover { background: var(--accent-soft); color: var(--accent); }
   .settings-panel { padding: 22px 26px; overflow-y: auto; }
 
   /* Settings: Agent panel */
   .settings-panel h3 { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
   .settings-panel .panel-sub { color: var(--text-muted); font-size: 12.5px;
     margin-bottom: 18px; }
+  /* Segmented control. Track = --bg (the most recessed surface in BOTH themes),
+     active pill = --bg-panel — so the selected segment is always *lighter* than
+     the track (in dark, --bg-panel #141414 sits above --bg #0a0a0a; previously
+     the track was --bg-subtle #1c1c1c, making the active pill look darker/sunken).
+     A hairline ring + lift keeps the pill crisp in either theme. */
   .settings-mode-tabs { display: grid; grid-template-columns: 1fr 1fr;
-    background: var(--bg-subtle); border-radius: var(--radius-sm); padding: 3px;
-    gap: 3px; margin-bottom: 16px; }
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 3px; gap: 3px; margin-bottom: 16px; }
   .settings-mode-tabs button { background: transparent; border: 0; color: var(--text-muted);
     padding: 7px 0; border-radius: calc(var(--radius-sm) - 2px); cursor: pointer;
-    font-size: 12.5px; font-family: inherit; transition: background .12s, color .12s; }
+    font-size: 12.5px; font-weight: 500; font-family: inherit; transition: background .12s, color .12s; }
+  .settings-mode-tabs button:hover:not(.active) { color: var(--text); }
   .settings-mode-tabs button.active { background: var(--bg-panel); color: var(--text);
-    box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--border); }
   .agent-card { display: grid; grid-template-columns: 36px 1fr auto;
     gap: 12px; align-items: center; padding: 12px 14px;
     border: 1px solid var(--border); border-radius: var(--radius);
@@ -174,8 +203,12 @@
   .agent-card:hover { border-color: var(--accent); }
   .agent-card.selected { border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-soft); }
+  /* Light "logo chip" — brand logos (and the gear/cloud fallback, which inherits
+     this color) are drawn for light backgrounds, so keep it light + dark-inked in
+     BOTH themes; otherwise black marks (Cursor, Codex…) vanish on the dark card. */
   .agent-card .agent-icon { width: 36px; height: 36px; border-radius: var(--radius-sm);
-    display: grid; place-items: center; background: var(--bg-subtle); font-size: 18px; }
+    display: grid; place-items: center; background: #fff; color: #1a1a1a;
+    border: 1px solid var(--border); font-size: 18px; }
   .agent-card .agent-icon .agent-logo { width: 22px; height: 22px; object-fit: contain;
     display: block; }
   .agent-card .agent-meta .agent-name { font-size: 13.5px; font-weight: 500; color: var(--text); }
@@ -224,6 +257,26 @@
     box-shadow: 0 0 0 2px var(--accent-soft); }
   .lang-options button .lang-name { font-weight: 500; margin-bottom: 4px; }
   .lang-options button .lang-sub { font-size: 11.5px; color: var(--text-muted);
+    font-family: var(--font-mono); }
+
+  /* Settings: General panel (theme + language) — option-card grid, reused for
+     both sections. auto-fit → 3 theme cards / 2 language cards fit responsively. */
+  .settings-section { margin-bottom: 24px; }
+  .settings-section:last-child { margin-bottom: 0; }
+  .settings-section h4 { margin: 0 0 3px; font-size: 13px; font-weight: 600; color: var(--text); }
+  .settings-section .section-sub { color: var(--text-muted); font-size: 12px;
+    margin-bottom: 12px; }
+  .opt-grid { display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .opt-grid button { background: var(--bg-panel); border: 1px solid var(--border);
+    color: var(--text); padding: 12px 14px; border-radius: var(--radius);
+    cursor: pointer; font-family: inherit; font-size: 13.5px; text-align: left;
+    display: flex; flex-direction: column; gap: 4px; transition: border-color .12s, background .12s; }
+  .opt-grid button:hover { border-color: var(--accent); }
+  .opt-grid button.active { border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft); }
+  .opt-grid button .opt-name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .opt-grid button .opt-sub { font-size: 11.5px; color: var(--text-muted);
     font-family: var(--font-mono); }
 
   /* Settings: About */
@@ -797,8 +850,11 @@
     background: var(--accent-soft); border: 1px dashed var(--accent);
     border-radius: var(--radius-sm); margin: 8px 16px; transition: background .12s, box-shadow .12s; }
   .soundtrack-panel > summary::-webkit-details-marker { display: none; }
-  .soundtrack-panel > summary::after { content: '⌄'; margin-left: auto; font-size: 15px;
-    color: var(--accent); transition: transform .15s; flex: 0 0 auto; }
+  .soundtrack-panel > summary::after { content: ''; margin-left: auto;
+    width: 16px; height: 16px; color: var(--accent); background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: transform .15s; flex: 0 0 auto; }
   .soundtrack-panel[open] > summary::after { transform: rotate(180deg); }
   .soundtrack-panel[open] > summary { border-style: solid; }
   .soundtrack-panel > summary:hover { background: var(--accent); }
@@ -1043,7 +1099,7 @@
 <div class="app">
   <header class="toolbar">
     <div class="brand">
-      <div class="logo">H</div>
+      <div class="logo"><img src="/brand-logo.png" alt="AI Video HTML" /></div>
       <div>
         <h1>html-video</h1>
         <div class="v">studio · v0.7</div>
@@ -1055,7 +1111,7 @@
     <div class="toolbar-section">
       <span class="sec-label" data-i18n="toolbar.template">Template</span>
       <button class="pick-btn empty" id="btn-pick-template" disabled>
-        <span class="label">— choose —</span><span class="arrow">▾</span>
+        <span class="label">— choose —</span><span class="arrow"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
       </button>
     </div>
 
@@ -1064,7 +1120,7 @@
       <button class="pick-btn agent-pill" id="btn-agent">
         <span class="agent-dot" id="agent-dot"></span>
         <span class="agent-pill-logo" id="agent-pill-logo"></span>
-        <span class="label" id="agent-pill-label">—</span><span class="arrow">▾</span>
+        <span class="label" id="agent-pill-label">—</span><span class="arrow"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
       </button>
       <div class="agent-menu" id="agent-menu" hidden></div>
     </div>
@@ -1089,13 +1145,13 @@
       <div class="sidebar-head">
         <h2>Projects</h2>
         <button class="new-project" id="btn-new">+ New</button>
-        <button class="sidebar-toggle" id="btn-sidebar-toggle" title="Collapse sidebar">‹</button>
+        <button class="sidebar-toggle" id="btn-sidebar-toggle" title="Collapse sidebar"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
       </div>
       <div class="project-list" id="project-list"></div>
     </aside>
     <div class="empty-state">
       <div>
-        <div class="ico">🎬</div>
+        <div class="ico"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
         <h2>Pick or create a project</h2>
         <p>Each project = one HTML video. Choose a template to see the visual baseline, chat with your agent to drive the content, edit per-frame text in the middle column, see the result on the right.</p>
       </div>
@@ -1121,7 +1177,7 @@
   <div class="modal">
     <div class="modal-head">
       <h2 data-i18n="gallery.title">Pick a template</h2>
-      <button class="modal-close" id="gallery-close" data-i18n="gallery.close">Close</button>
+      <button class="modal-close" id="gallery-close" aria-label="Close"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>
     <div class="gallery" id="gallery"></div>
   </div>
@@ -1132,7 +1188,7 @@
     <div class="tpl-preview-head">
       <div class="name" id="tpl-preview-name">—</div>
       <div class="desc" id="tpl-preview-desc"></div>
-      <button class="modal-close" id="tpl-preview-close" aria-label="Close">✕</button>
+      <button class="modal-close" id="tpl-preview-close" aria-label="Close"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>
     <div class="tpl-preview-stage">
       <div class="tpl-preview-frame" id="tpl-preview-frame">
@@ -1154,7 +1210,7 @@
   <div class="modal settings">
     <div class="settings-head">
       <h2 data-i18n="settings.title">Settings</h2>
-      <button class="modal-close" id="settings-close" aria-label="Close">✕</button>
+      <button class="modal-close" id="settings-close" aria-label="Close"><svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>
     <div class="settings-body">
       <nav class="settings-nav">
@@ -1162,9 +1218,9 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V12M4 6V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 12h4M10 8h4M18 16h4"/></svg>
           <span data-i18n="settings.tab.agent">Agent</span>
         </button>
-        <button class="settings-nav-item" data-settings-tab="language">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h12M9 4v4M14 13l-4 7M14 13l4 7M11 17h6"/></svg>
-          <span data-i18n="settings.tab.language">Language</span>
+        <button class="settings-nav-item" data-settings-tab="general">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span data-i18n="settings.tab.general">General</span>
         </button>
         <button class="settings-nav-item" data-settings-tab="about">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M11 12h1v4h1"/></svg>
@@ -1176,6 +1232,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.7"></script>
+<script type="module" src="/app.js?v=0.9-theme3"></script>
 </body>
 </html>

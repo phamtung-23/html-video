@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js';
+import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-theme';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -10,6 +10,71 @@ document.addEventListener('hv-locale-change', () => {
   if (typeof renderSidebar === 'function') renderSidebar();
 });
 document.documentElement.lang = getLocale();
+
+// ─── Icon set ───────────────────────────────────────────────────────────────
+// Standard inline-SVG icons (Lucide geometry, MIT). Stroke uses `currentColor`
+// so an icon inherits the surrounding text color, and is sized in `em` via the
+// `.ico-svg` CSS rule (so it scales with the host's font-size). Self-contained:
+// no icon-font / CDN dependency. `icon()` = bare glyph; `iconL()` = leading
+// glyph with a right gap, for "icon + label" buttons.
+const ICON_PATHS = {
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  clapperboard: '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+  video: '<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  barChart: '<line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/>',
+  type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+  crosshair: '<circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  externalLink: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+  sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>',
+  arrowLeftRight: '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
+  cornerDownLeft: '<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+function icon(name, extraClass) {
+  const p = ICON_PATHS[name];
+  if (!p) return '';
+  const cls = extraClass ? `ico-svg ${extraClass}` : 'ico-svg';
+  return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+// Leading icon (icon + text label): adds a right gap.
+function iconL(name) { return icon(name, 'ico-lead'); }
+
+// ─── Theme (light / dark / auto) ──────────────────────────────────────────────
+// Stored in localStorage; written to <html data-theme> ('light'|'dark') or
+// removed ('auto' → follow OS via prefers-color-scheme). An inline <head> script
+// applies it before first paint; this keeps it in sync for in-app toggling.
+const THEME_KEY = 'hv-theme';
+function getTheme() {
+  try { const v = localStorage.getItem(THEME_KEY); return v === 'light' || v === 'dark' ? v : 'auto'; }
+  catch { return 'auto'; }
+}
+function applyTheme(theme) {
+  const el = document.documentElement;
+  if (theme === 'light' || theme === 'dark') el.dataset.theme = theme;
+  else delete el.dataset.theme;
+}
+function setTheme(theme) {
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  applyTheme(theme);
+}
+applyTheme(getTheme());
 
 // Narration voices (free, key-less Edge-TTS). `key` maps to a localized label
 // (soundtrack.voice_<key>); the value is the Edge voice id.
@@ -418,8 +483,8 @@ function openProjectMenu(anchor) {
   const menu = document.createElement('div');
   menu.className = 'row-menu';
   menu.innerHTML = `
-    <button data-act="rename">${t('sidebar.menu.rename')}</button>
-    <button data-act="delete">${t('sidebar.menu.delete')}</button>
+    <button data-act="rename">${iconL('edit')}${t('sidebar.menu.rename')}</button>
+    <button data-act="delete">${iconL('trash')}${t('sidebar.menu.delete')}</button>
   `;
   // Position below the button.
   const r = anchor.getBoundingClientRect();
@@ -540,7 +605,7 @@ function renderAgentPill() {
   const a = state.agents.find((x) => x.id === currentId);
   const available = a?.available ?? false;
   label.textContent = a?.name ?? currentId;
-  logo.innerHTML = AGENT_LOGOS[currentId] ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />` : '';
+  logo.innerHTML = agentIconHtml(currentId);
   dot.className = 'agent-dot ' + (available ? 'ok' : 'missing');
   pill.title = available ? t('toolbar.agent_ready') : t('settings.agent.unavailable');
   renderModelSwitch(currentId);
@@ -584,13 +649,13 @@ function renderAgentMenu() {
   const currentId = state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
   menu.innerHTML = state.agents.map((a) => {
     const cur = a.id === currentId ? ' current' : '';
-    const logo = AGENT_LOGOS[a.id] ? `<img src="${esc(AGENT_LOGOS[a.id])}" alt="" />` : '';
+    const logo = agentIconHtml(a.id);
     // AMR is "found but needs login": it can be made available by signing in,
     // unlike a genuinely missing CLI. Offer a login button instead of just
     // greying it out + the misleading "Not installed".
     const needsLogin = !a.available && a.id === 'amr' && !!a.hint;
     // Star the recommended agent (AMR) to draw the eye.
-    const star = a.id === 'amr' ? `<span class="mi-star" title="${esc(t('agent.recommended'))}">★</span>` : '';
+    const star = a.id === 'amr' ? `<span class="mi-star" title="${esc(t('agent.recommended'))}">${icon('star')}</span>` : '';
     const inner = `<span class="mi-dot ${a.available ? 'ok' : ''}"></span>
       <span class="mi-logo">${logo}</span>
       <span class="mi-name">${esc(a.name)}</span>${star}`;
@@ -672,7 +737,7 @@ function _agentMenuOutside(e) {
 // template + agent picks not responding in v0.6.2.)
 function wireToolbar() {
   const settingsBtn = document.getElementById('btn-settings');
-  if (settingsBtn) settingsBtn.onclick = openSettingsModal;
+  if (settingsBtn) settingsBtn.onclick = () => openSettingsModal();
   const pickBtn = document.getElementById('btn-pick-template');
   if (pickBtn) {
     pickBtn.onclick = (e) => {
@@ -747,7 +812,7 @@ function renderMain() {
               <div class="attachments" id="attachments"></div>
               <textarea id="composer-input" placeholder="..." rows="2"></textarea>
               <div class="actions">
-                <button class="icon-btn" id="btn-attach" title="${t('composer.attach')}">📎</button>
+                <button class="icon-btn" id="btn-attach" title="${t('composer.attach')}">${icon('paperclip')}</button>
                 <input type="file" id="file-input" multiple style="display:none" />
                 <span class="composer-help" tabindex="0" role="img" aria-label="${esc(t('composer.hint'))}" data-tip="${esc(t('composer.hint'))}">?</span>
                 <button class="send-btn" id="btn-send" disabled>${t('composer.send')}</button>
@@ -758,17 +823,17 @@ function renderMain() {
 
         <section class="right-pane">
           <div class="preview-stage" id="preview-stage">
-            <div class="preview-placeholder"><div><div class="ico">🎞️</div>${t('preview.placeholder.pick_template')}</div></div>
+            <div class="preview-placeholder"><div><div class="ico">${icon('film')}</div>${t('preview.placeholder.pick_template')}</div></div>
           </div>
           <div class="frames-strip" id="frames-strip"></div>
           <div class="right-footer">
             <span class="status" id="footer-status">${t('app.no_project')}</span>
             <span class="grow"></span>
-            <button class="reload-btn" id="btn-reload">${t('preview.reload')}</button>
+            <button class="reload-btn" id="btn-reload">${iconL('refresh')}${t('preview.reload')}</button>
           </div>
           <details class="soundtrack-panel" id="soundtrack-panel">
             <summary>
-              <span class="st-summary-main">${t('soundtrack.title')}</span>
+              <span class="st-summary-main">${iconL('mic')}${t('soundtrack.title')}</span>
               <span class="st-summary-sub">${t('soundtrack.summary_sub')}</span>
               <span class="soundtrack-badge">${t('soundtrack.optional')}</span>
             </summary>
@@ -789,8 +854,8 @@ function renderMain() {
                   </div>
                   <textarea id="st-narration-text" rows="2" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
                   <div class="st-draft-group">
-                    <button type="button" class="st-draft" id="btn-st-draft-frame">${t('soundtrack.draft_frame')}</button>
-                    <button type="button" class="st-draft" id="btn-st-draft-all">${t('soundtrack.draft_all')}</button>
+                    <button type="button" class="st-draft" id="btn-st-draft-frame">${iconL('sparkles')}${t('soundtrack.draft_frame')}</button>
+                    <button type="button" class="st-draft" id="btn-st-draft-all">${iconL('sparkles')}${t('soundtrack.draft_all')}</button>
                   </div>
                 </div>
 
@@ -805,11 +870,11 @@ function renderMain() {
                     <select id="st-narration-voice" class="st-voice-select">
                       ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
                     </select>
-                    <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${t('soundtrack.fit_durations')}</button>
+                    <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
                   </div>
                   <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
                   <div class="st-section-actions">
-                    <button class="st-generate" id="btn-st-gen-narration">${t('soundtrack.gen_narration')}</button>
+                    <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
                     <span class="st-status" id="st-narration-status"></span>
                   </div>
                 </div>
@@ -838,14 +903,14 @@ function renderMain() {
             <header>
               <h3>Content graph</h3>
               <span class="grow"></span>
-              <button class="download-btn" id="graph-download">⬇ Download JSON</button>
-              <button class="close-btn" id="graph-close">✕</button>
+              <button class="download-btn" id="graph-download">${iconL('download')}Download JSON</button>
+              <button class="close-btn" id="graph-close">${icon('x')}</button>
             </header>
             <pre id="graph-json"></pre>
           </div>
         </div>
       `
-      : `<div class="empty-state"><div><div class="ico">🎬</div>
+      : `<div class="empty-state"><div><div class="ico">${icon('clapperboard')}</div>
           <h2>${t('app.empty_pick_create')}</h2>
           <p>${t('app.empty_subtitle')}</p></div></div>`}
   `;
@@ -957,7 +1022,7 @@ function wireSoundtrackPanel() {
   async function draftNarration(frameId /* null = all */) {
     if (!state.selected) return;
     const btn = frameId ? draftFrameBtn : draftAllBtn;
-    const label = btn?.textContent;
+    const label = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.textContent = t('soundtrack.drafting'); }
     try {
       const res = await fetch(`/api/projects/${state.selected.id}/draft-narration`, {
@@ -979,7 +1044,7 @@ function wireSoundtrackPanel() {
     } catch (e) {
       if (narrationStatusEl) narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: (e?.message ?? e) });
     } finally {
-      if (btn) { btn.textContent = label; }
+      if (btn) { btn.innerHTML = label; }
       syncNarrationField();
     }
   }
@@ -993,7 +1058,7 @@ function wireSoundtrackPanel() {
     fitBtn.disabled = !hasFrames || !anyNarration();
     fitBtn.onclick = async () => {
       if (!state.selected || !anyNarration()) return;
-      const label = fitBtn.textContent;
+      const label = fitBtn.innerHTML;
       fitBtn.disabled = true; fitBtn.textContent = t('soundtrack.fitting');
       try {
         const res = await fetch(`/api/projects/${state.selected.id}/fit-durations`, {
@@ -1012,7 +1077,7 @@ function wireSoundtrackPanel() {
       } catch (e) {
         toast(`${e?.message ?? e}`, 'error');
       } finally {
-        fitBtn.textContent = label; fitBtn.disabled = !anyNarration();
+        fitBtn.innerHTML = label; fitBtn.disabled = !anyNarration();
       }
     };
   }
@@ -1052,7 +1117,7 @@ function wireSoundtrackPanel() {
       payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
     }
 
-    const label = btn?.textContent;
+    const label = btn?.innerHTML;
     if (btn) btn.disabled = true;
     clearBtn.disabled = true;
     if (statusEl) statusEl.textContent = t('soundtrack.starting');
@@ -1101,7 +1166,7 @@ function wireSoundtrackPanel() {
     } catch (e) {
       if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: (e?.message ?? e) });
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (btn) { btn.disabled = false; btn.innerHTML = label; }
       clearBtn.disabled = false;
     }
   }
@@ -1133,7 +1198,7 @@ function attachmentKind(file) {
   return 'reference-link';
 }
 function iconForKind(k) {
-  return { image: '🖼', video: '🎬', audio: '🎵', data: '📊', text: '📝' }[k] ?? '📎';
+  return { image: icon('image'), video: icon('video'), audio: icon('music'), data: icon('barChart'), text: icon('type') }[k] ?? icon('paperclip');
 }
 
 function addAttachments(files) {
@@ -1163,7 +1228,7 @@ function renderAttachments() {
     return `<span class="att-chip">
       ${thumb}
       <span class="name" title="${esc(a.name)}">${esc(a.name)}</span>
-      <button data-i="${i}" title="Remove">×</button>
+      <button data-i="${i}" title="Remove">${icon('x')}</button>
     </span>`;
   }).join('');
   wrap.querySelectorAll('button[data-i]').forEach(btn => {
@@ -1224,7 +1289,7 @@ function renderComposer() {
     if (focus) {
       const order = (p?.frames ?? []).find((f) => f.graphNodeId === focus)?.order ?? 0;
       const orderStr = String(order + 1).padStart(2, '0');
-      const html = `🎯 ${t('composer.focus_chip', { order: orderStr, fid: '' })}<span class="fid">${esc(focus)}</span><button title="${t('composer.focus_clear')}" type="button">✕</button>`;
+      const html = `${iconL('crosshair')}${t('composer.focus_chip', { order: orderStr, fid: '' })}<span class="fid">${esc(focus)}</span><button title="${t('composer.focus_clear')}" type="button">${icon('x')}</button>`;
       if (!chip) {
         chip = document.createElement('div');
         chip.className = 'focus-chip';
@@ -1267,7 +1332,7 @@ function renderChatLog() {
   const log = document.getElementById('chat-log');
   if (!log) return;
   if (!state.messages.length) {
-    log.innerHTML = `<div class="chat-empty"><div><div class="ico">💬</div>
+    log.innerHTML = `<div class="chat-empty"><div><div class="ico">${icon('message')}</div>
       <div style="font-weight:500;margin-bottom:6px;">${t('chat.empty.title')}</div>
       ${t('chat.empty.body')}
       <div class="examples">
@@ -1741,7 +1806,7 @@ function renderFormCard(form, submitted, msgIdx) {
     </div>` : '';
   const actionsHtml = submitted ? '' : `
     <div class="form-actions">
-      <button class="form-submit" data-form-msg="${msgIdx}">${esc(t('card.form_submit'))}</button>
+      <button class="form-submit" data-form-msg="${msgIdx}">${esc(t('card.form_submit'))}${icon('cornerDownLeft', 'ico-trail')}</button>
     </div>`;
   return `<div class="form-card${submitted ? ' submitted' : ''}">
     <div class="form-title">${esc(title)}</div>
@@ -1767,14 +1832,14 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
   }).join('');
   const actionsHtml = resolved ? '' : `
     <div class="confirm-actions">
-      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${esc(t('card.confirm_generate'))}</button>` : ''}
-      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${esc(t('card.confirm_edit'))}</button>` : ''}
+      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${iconL('check')}${esc(t('card.confirm_generate'))}</button>` : ''}
+      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${iconL('edit')}${esc(t('card.confirm_edit'))}</button>` : ''}
     </div>`;
   return `<div class="confirm-card${resolved ? ' resolved' : ''}">
     <div class="confirm-title">${esc(title)}</div>
     <div class="confirm-summary">${summaryHtml}</div>
     ${actionsHtml}
-    ${resolved ? `<div class="confirm-resolved-mark">${esc(resolved)}</div>` : ''}
+    ${resolved ? `<div class="confirm-resolved-mark">${resolved === t('card.confirm_edit') ? iconL('edit') : iconL('check')}${esc(resolved)}</div>` : ''}
   </div>`;
 }
 
@@ -1799,7 +1864,7 @@ function renderOptionCard(opts, picked, msgIdx) {
     <div class="freeform-input">
       <textarea data-freeform-msg="${msgIdx}" rows="1"
         placeholder="${esc(t('card.freeform_placeholder'))}"></textarea>
-      <button class="freeform-send" data-freeform-msg="${msgIdx}" disabled>${esc(t('card.send'))}</button>
+      <button class="freeform-send" data-freeform-msg="${msgIdx}" disabled>${iconL('cornerDownLeft')}${esc(t('card.send'))}</button>
     </div>` : '';
   return `<div class="opt-card">
     <div class="question">${esc(opts.question)}</div>
@@ -1814,13 +1879,13 @@ function renderPreview() {
   if (!stage) return;
   const p = state.selected;
   if (!p) {
-    stage.innerHTML = `<div class="preview-placeholder"><div><div class="ico">🎞️</div>${t('preview.placeholder.pick_project')}</div></div>`;
+    stage.innerHTML = `<div class="preview-placeholder"><div><div class="ico">${icon('film')}</div>${t('preview.placeholder.pick_project')}</div></div>`;
     renderFramesStrip();
     return;
   }
   // No template + no prior preview → show "send a chat first" placeholder
   if (!p.templateId && !p.lastPreviewHtmlPath) {
-    stage.innerHTML = `<div class="preview-placeholder"><div><div class="ico">🎞️</div>${t('preview.placeholder.pick_template')}</div></div>`;
+    stage.innerHTML = `<div class="preview-placeholder"><div><div class="ico">${icon('film')}</div>${t('preview.placeholder.pick_template')}</div></div>`;
     renderFramesStrip();
     return;
   }
@@ -1862,7 +1927,7 @@ function renderPreview() {
     const videoSrc = `/preview/${p.id}/frame/${encodeURIComponent(state.activeFrameId)}.mp4?t=${Date.now()}`;
     stage.innerHTML = `<div class="preview-frame" style="aspect-ratio:${vw}/${vh};${sizeStyle}">
       <video id="preview-iframe" src="${videoSrc}" autoplay muted loop controls playsinline style="width:${vw}px;height:${vh}px"></video>
-      ${stamp ? `<div class="stamp">${esc(stamp)} · ⚡</div>` : ''}
+      ${stamp ? `<div class="stamp">${esc(stamp)} · ${icon('zap')}</div>` : ''}
     </div>`;
     attachPreviewScaler();
     renderFramesStrip();
@@ -1876,7 +1941,7 @@ function renderPreview() {
     ${stamp ? `<div class="stamp">${esc(stamp)}</div>` : ''}
     <button class="edit-toggle" id="btn-edit-text"
       title="${state.editTextMode ? t('preview.edit_text_done_title') : t('preview.edit_text_title')}">
-      ${state.editTextMode ? t('preview.edit_text_on') : t('preview.edit_text_off')}
+      ${state.editTextMode ? iconL('check') + t('preview.edit_text_on') : iconL('edit') + t('preview.edit_text_off')}
     </button>
   </div>`;
   attachPreviewScaler();
@@ -2126,16 +2191,16 @@ function renderFramesStrip() {
       if (busy) {
         enhanceCtl = `<span class="frame-enhance busy" data-fid="${esc(f.graphNodeId)}">${t('frames.enhancing', { pct: state.enhancing.pct ?? 0 })}</span>`;
       } else if (enhanced) {
-        enhanceCtl = `<span class="frame-enhance on" data-fid="${esc(f.graphNodeId)}" data-act="unenhance" title="${esc(t('frames.enhanced_revert'))}">${t('frames.enhanced_revert')}</span>`;
+        enhanceCtl = `<span class="frame-enhance on" data-fid="${esc(f.graphNodeId)}" data-act="unenhance" title="${esc(t('frames.enhanced_revert'))}">${iconL('zap')}${t('frames.enhanced_revert')}</span>`;
       } else {
-        enhanceCtl = `<span class="frame-enhance" data-fid="${esc(f.graphNodeId)}" data-act="enhance" title="${esc(t('frames.enhance_hint'))}">${t('frames.enhance')}</span>`;
+        enhanceCtl = `<span class="frame-enhance" data-fid="${esc(f.graphNodeId)}" data-act="enhance" title="${esc(t('frames.enhance_hint'))}">${iconL('zap')}${t('frames.enhance')}</span>`;
       }
     }
     return `<button class="${cls}${isData ? ' is-data' : ''}" data-fid="${esc(f.graphNodeId)}">
       <div class="frame-thumb">
         ${thumbInner}
         ${enhanceCtl}
-        ${isFocus ? `<div class="focus-mark" title="${esc(t('frame.editing_this'))}">✎</div>` : ''}
+        ${isFocus ? `<div class="focus-mark" title="${esc(t('frame.editing_this'))}">${icon('edit')}</div>` : ''}
       </div>
       <div class="frame-tab-label">
         <span class="order">${String(f.order + 1).padStart(2, '0')}</span>
@@ -2876,12 +2941,12 @@ const AGENT_LOGOS = {
   'qoder-cli': '/agent-icons/qoder.svg',
 };
 const AGENT_ICON_FALLBACK = {
-  'anthropic-api': '☁️',
+  'anthropic-api': 'cloud',
 };
 function agentIconHtml(id) {
   const logo = AGENT_LOGOS[id];
   if (logo) return `<img src="${esc(logo)}" alt="" class="agent-logo" />`;
-  return AGENT_ICON_FALLBACK[id] || '⚙️';
+  return icon(AGENT_ICON_FALLBACK[id] || 'settings');
 }
 const AGENT_DESC = {
   'anthropic-api': 'Direct Messages API · streams reliably',
@@ -2909,7 +2974,7 @@ function closeSettingsModal() {
 function renderSettingsPanel(tab) {
   const panel = document.getElementById('settings-panel');
   if (!panel) return;
-  if (tab === 'language') return renderSettingsLanguage(panel);
+  if (tab === 'general' || tab === 'language') return renderSettingsGeneral(panel);
   if (tab === 'about') return renderSettingsAbout(panel);
   return renderSettingsAgent(panel);
 }
@@ -2948,7 +3013,7 @@ function renderSettingsAgent(panel) {
         ${esc(t('settings.agent.detected', { count: list.length }))}
       </div>
       <button class="btn-rescan" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;font-family:var(--font-mono)">
-        ${esc(t('settings.agent.rescan'))}
+        ${iconL('refresh')}${esc(t('settings.agent.rescan'))}
       </button>
     </div>
 
@@ -2957,9 +3022,9 @@ function renderSettingsAgent(panel) {
         const isCurrent = a.id === currentId && a.available;
         const desc = AGENT_DESC[a.id] || (a.bin ?? '');
         const ver = a.version ? esc(a.version) : (a.available ? '' : esc(t('settings.agent.unavailable')));
-        const icon = agentIconHtml(a.id);
+        const iconHtml = agentIconHtml(a.id);
         return `<div class="agent-card ${isCurrent ? 'selected' : ''}" data-agent-id="${esc(a.id)}">
-          <div class="agent-icon">${icon}</div>
+          <div class="agent-icon">${iconHtml}</div>
           <div class="agent-meta">
             <div class="agent-name">
               <span class="agent-status-dot ${a.available ? 'ok' : 'missing'}"></span>${esc(a.name)}
@@ -2973,7 +3038,7 @@ function renderSettingsAgent(panel) {
               ? (isCurrent
                   ? `<span style="font-size:11px;color:var(--accent);font-family:var(--font-mono)">${esc(t('settings.agent.in_use'))}</span>`
                   : `<button data-act="use" class="primary-action" style="background:var(--accent);border-color:var(--accent);color:var(--accent-fg)">${esc(t('settings.agent.use'))}</button>`)
-              : (a.installUrl ? `<a href="${a.installUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-faint)">install ↗</a>` : '')}
+              : (a.installUrl ? `<a href="${a.installUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-faint)">install ${icon('externalLink')}</a>` : '')}
           </div>
           <div class="agent-test-result" data-test-result="${esc(a.id)}" style="display:none;grid-column:1 / -1"></div>
         </div>`;
@@ -3042,27 +3107,51 @@ function renderSettingsAgent(panel) {
   });
 }
 
-function renderSettingsLanguage(panel) {
-  const cur = getLocale();
+function renderSettingsGeneral(panel) {
+  const curLang = getLocale();
+  const curTheme = getTheme();
+  const themeOpt = (key, ic) => `
+    <button data-theme-opt="${key}" class="${curTheme === key ? 'active' : ''}">
+      <div class="opt-name">${iconL(ic)}${esc(t('settings.theme.' + key))}</div>
+      <div class="opt-sub">${esc(t('settings.theme.' + key + '_sub'))}</div>
+    </button>`;
+  const langOpt = (key) => `
+    <button data-lang="${key}" class="${curLang === key ? 'active' : ''}">
+      <div class="opt-name">${esc(t('settings.language.' + key))}</div>
+      <div class="opt-sub">${esc(t('settings.language.' + key + '_sub'))}</div>
+    </button>`;
   panel.innerHTML = `
-    <h3>${esc(t('settings.language.title'))}</h3>
-    <div class="panel-sub">${esc(t('settings.language.subtitle'))}</div>
-    <div class="lang-options">
-      <button data-lang="vi" class="${cur === 'vi' ? 'active' : ''}">
-        <div class="lang-name">${esc(t('settings.language.vi'))}</div>
-        <div class="lang-sub">${esc(t('settings.language.vi_sub'))}</div>
-      </button>
-      <button data-lang="en" class="${cur === 'en' ? 'active' : ''}">
-        <div class="lang-name">${esc(t('settings.language.en'))}</div>
-        <div class="lang-sub">${esc(t('settings.language.en_sub'))}</div>
-      </button>
+    <h3>${esc(t('settings.tab.general'))}</h3>
+    <div class="panel-sub">${esc(t('settings.general.subtitle'))}</div>
+
+    <div class="settings-section">
+      <h4>${esc(t('settings.theme.title'))}</h4>
+      <div class="section-sub">${esc(t('settings.theme.subtitle'))}</div>
+      <div class="opt-grid">
+        ${themeOpt('auto', 'monitor')}
+        ${themeOpt('light', 'sun')}
+        ${themeOpt('dark', 'moon')}
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>${esc(t('settings.language.title'))}</h4>
+      <div class="section-sub">${esc(t('settings.language.subtitle'))}</div>
+      <div class="opt-grid">
+        ${langOpt('vi')}
+        ${langOpt('en')}
+      </div>
     </div>
   `;
+  panel.querySelectorAll('[data-theme-opt]').forEach((btn) => {
+    btn.onclick = () => { setTheme(btn.dataset.themeOpt); renderSettingsGeneral(panel); };
+  });
   panel.querySelectorAll('[data-lang]').forEach((btn) => {
     btn.onclick = () => {
       setLocale(btn.dataset.lang);
-      // re-render this panel itself with the new locale
-      renderSettingsLanguage(panel);
+      // re-render this panel with the new locale (the global locale-change
+      // handler re-renders the rest of the app but not this open panel)
+      renderSettingsGeneral(panel);
     };
   });
 }
