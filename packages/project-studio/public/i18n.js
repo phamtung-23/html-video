@@ -89,6 +89,9 @@ const DICT = {
     'enhance.failed': '⚡ Remotion thất bại: {message}',
 
     'text_pane.title': 'Văn bản khung',
+    'text_pane.tab_text': 'Văn bản khung',
+    'text_pane.tab_narration': 'Thuyết minh',
+    'text_pane.resize_hint': 'Kéo để đổi độ rộng · nhấp đúp để đặt lại',
     'text_pane.no_project': 'Không có dự án.',
     'text_pane.empty_with_frames':
       'Khung này không có văn bản chỉnh sửa được. Chuyển sang khung khác, hoặc bấm ✎ Sửa văn bản trên canvas.',
@@ -141,7 +144,7 @@ const DICT = {
     'soundtrack.fitting': 'Đang khớp…',
     'soundtrack.fitted': '✓ Đã khớp thời lượng khung theo lời thoại · tổng {sec}s',
     'soundtrack.fit_failed': 'Không thể khớp thời lượng',
-    'soundtrack.narration_volume': 'Âm lượng lời thoại',
+    'soundtrack.narration_volume': 'Âm lượng',
     'soundtrack.clear': 'Xoá',
     'soundtrack.starting': '⏵ Đang tạo lời thoại…',
     'soundtrack.progress_narration': '⏵ Đang tạo lời thoại…',
@@ -323,6 +326,9 @@ const DICT = {
     'enhance.failed': '⚡ Remotion failed: {message}',
 
     'text_pane.title': 'Frame text',
+    'text_pane.tab_text': 'Frame text',
+    'text_pane.tab_narration': 'Narration',
+    'text_pane.resize_hint': 'Drag to resize · double-click to reset',
     'text_pane.no_project': 'No project.',
     'text_pane.empty_with_frames':
       'No editable text on this frame. Switch to another frame, or click ✎ Edit text on the canvas.',
@@ -375,7 +381,7 @@ const DICT = {
     'soundtrack.fitting': 'Fitting…',
     'soundtrack.fitted': '✓ Frame timing fit to narration · {sec}s total',
     'soundtrack.fit_failed': 'Could not fit timing',
-    'soundtrack.narration_volume': 'Narration volume',
+    'soundtrack.narration_volume': 'Volume',
     'soundtrack.clear': 'Clear',
     'soundtrack.starting': '⏵ Generating narration…',
     'soundtrack.progress_narration': '⏵ Generating narration…',

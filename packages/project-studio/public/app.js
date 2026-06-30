@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-theme';
+import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-narr';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -61,6 +61,7 @@ function iconL(name) { return icon(name, 'ico-lead'); }
 // removed ('auto' → follow OS via prefers-color-scheme). An inline <head> script
 // applies it before first paint; this keeps it in sync for in-app toggling.
 const THEME_KEY = 'hv-theme';
+const TF_WIDTH_KEY = 'hv-textfields-w'; // right column width (px), set before first paint
 function getTheme() {
   try { const v = localStorage.getItem(THEME_KEY); return v === 'light' || v === 'dark' ? v : 'auto'; }
   catch { return 'auto'; }
@@ -75,6 +76,7 @@ function setTheme(theme) {
   applyTheme(theme);
 }
 applyTheme(getTheme());
+applySavedTextfieldsWidth();
 
 // Narration voices (free, key-less Edge-TTS). `key` maps to a localized label
 // (soundtrack.voice_<key>); the value is the Edge voice id.
@@ -113,6 +115,7 @@ const state = {
   composing: false,
   textFields: [],          // [{key, original, current}]
   textSaveTimer: null,
+  rightTab: 'text',        // right column tab: 'text' (frame text) | 'narration' (voiceover)
   pendingAttachments: [],  // [{file, dataUrl?, name, kind, size}] before send
   // v0.8: multi-frame timeline state
   activeFrameId: null,     // graphNodeId currently shown in iframe
@@ -831,71 +834,70 @@ function renderMain() {
             <span class="grow"></span>
             <button class="reload-btn" id="btn-reload">${iconL('refresh')}${t('preview.reload')}</button>
           </div>
-          <details class="soundtrack-panel" id="soundtrack-panel">
-            <summary>
-              <span class="st-summary-main">${iconL('mic')}${t('soundtrack.title')}</span>
-              <span class="st-summary-sub">${t('soundtrack.summary_sub')}</span>
-              <span class="soundtrack-badge">${t('soundtrack.optional')}</span>
-            </summary>
-            <div class="soundtrack-body">
-              <!-- ===== Narration / voiceover (free Edge-TTS) ===== -->
-              <!-- Two explicit steps so users don't confuse "write the text"
-                   (AI drafts words, no audio) with "synthesize the voice"
-                   (Edge-TTS produces an mp3). -->
-              <div class="st-section st-narration">
-                <div class="st-section-title">${t('soundtrack.narration_label')}</div>
-
-                <!-- Step 1: write the script (text only) -->
-                <div class="st-substep">
-                  <div class="st-substep-head">
-                    <span class="st-step-badge">1</span>
-                    <span class="st-step-label">${t('soundtrack.step_write')}</span>
-                    <span class="st-narration-which" id="st-narration-which"></span>
-                  </div>
-                  <textarea id="st-narration-text" rows="2" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
-                  <div class="st-draft-group">
-                    <button type="button" class="st-draft" id="btn-st-draft-frame">${iconL('sparkles')}${t('soundtrack.draft_frame')}</button>
-                    <button type="button" class="st-draft" id="btn-st-draft-all">${iconL('sparkles')}${t('soundtrack.draft_all')}</button>
-                  </div>
-                </div>
-
-                <!-- Step 2: synthesize the voice (audio) -->
-                <div class="st-substep">
-                  <div class="st-substep-head">
-                    <span class="st-step-badge">2</span>
-                    <span class="st-step-label">${t('soundtrack.step_voice')}</span>
-                  </div>
-                  <div class="st-voice-row">
-                    <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
-                    <select id="st-narration-voice" class="st-voice-select">
-                      ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
-                    </select>
-                    <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
-                  </div>
-                  <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
-                  <div class="st-section-actions">
-                    <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
-                    <span class="st-status" id="st-narration-status"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="soundtrack-actions">
-                <button class="st-clear" id="btn-st-clear">${t('soundtrack.clear')}</button>
-              </div>
-              <div class="soundtrack-preview" id="st-preview"></div>
-            </div>
-          </details>
         </section>
 
         <section class="text-pane">
+          <div class="text-pane-resizer" id="text-pane-resizer" title="${t('text_pane.resize_hint')}"></div>
           <div class="text-pane-head">
-            <h2>${t('text_pane.title')}</h2>
-            <span class="save-state" id="text-save-state">${t('text_pane.save_state.idle')}</span>
+            <div class="text-tabs" role="tablist">
+              <button class="text-tab${state.rightTab === 'narration' ? '' : ' active'}" data-text-tab="text">${iconL('edit')}${t('text_pane.tab_text')}</button>
+              <button class="text-tab${state.rightTab === 'narration' ? ' active' : ''}" data-text-tab="narration">${iconL('mic')}${t('text_pane.tab_narration')}</button>
+            </div>
             <button class="textfields-toggle" id="btn-textfields-toggle" title="${t('text_pane.collapse')}">›</button>
           </div>
-          <div class="text-fields" id="text-fields">
-            <div class="text-empty">${t('text_pane.empty_no_frames')}</div>
+          <div class="text-pane-body">
+            <!-- Tab 1: per-frame editable text -->
+            <div class="text-tab-panel" data-panel="text"${state.rightTab === 'narration' ? ' hidden' : ''}>
+              <div class="text-fields-bar"><span class="save-state" id="text-save-state">${t('text_pane.save_state.idle')}</span></div>
+              <div class="text-fields" id="text-fields">
+                <div class="text-empty">${t('text_pane.empty_no_frames')}</div>
+              </div>
+            </div>
+            <!-- Tab 2: narration / voiceover (free Edge-TTS). Same ids as before so
+                 wireSoundtrackPanel() keeps working; #soundtrack-panel is now this panel. -->
+            <div class="text-tab-panel narration-tab" data-panel="narration" id="soundtrack-panel"${state.rightTab === 'narration' ? '' : ' hidden'}>
+              <div class="soundtrack-body">
+                <div class="st-section st-narration">
+                  <div class="st-section-title">${t('soundtrack.narration_label')}</div>
+                  <!-- Step 1: write the script (text only) -->
+                  <div class="st-substep">
+                    <div class="st-substep-head">
+                      <span class="st-step-badge">1</span>
+                      <span class="st-step-label">${t('soundtrack.step_write')}</span>
+                      <span class="st-narration-which" id="st-narration-which"></span>
+                    </div>
+                    <textarea id="st-narration-text" rows="3" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
+                    <div class="st-draft-group">
+                      <button type="button" class="st-draft" id="btn-st-draft-frame">${iconL('sparkles')}${t('soundtrack.draft_frame')}</button>
+                      <button type="button" class="st-draft" id="btn-st-draft-all">${iconL('sparkles')}${t('soundtrack.draft_all')}</button>
+                    </div>
+                  </div>
+                  <!-- Step 2: synthesize the voice (audio) -->
+                  <div class="st-substep">
+                    <div class="st-substep-head">
+                      <span class="st-step-badge">2</span>
+                      <span class="st-step-label">${t('soundtrack.step_voice')}</span>
+                    </div>
+                    <div class="st-voice-row">
+                      <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
+                      <select id="st-narration-voice" class="st-voice-select">
+                        ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
+                      </select>
+                      <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
+                    </div>
+                    <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
+                    <div class="st-section-actions">
+                      <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
+                      <span class="st-status" id="st-narration-status"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="soundtrack-actions">
+                  <button class="st-clear" id="btn-st-clear">${t('soundtrack.clear')}</button>
+                </div>
+                <div class="soundtrack-preview" id="st-preview"></div>
+              </div>
+            </div>
           </div>
         </section>
         <div class="graph-modal" id="graph-modal">
@@ -938,7 +940,65 @@ function renderMain() {
     wireDragAndPaste();
     document.getElementById('btn-reload').onclick = () => { reloadPreview(); refreshTextFields(); };
     wireSoundtrackPanel();
+    wireTextPaneTabs();
+    wireTextPaneResizer();
   }
+}
+
+// Right column tabs: "frame text" editor vs "narration / voiceover".
+function wireTextPaneTabs() {
+  const pane = document.querySelector('.text-pane');
+  if (!pane) return;
+  pane.querySelectorAll('.text-tab').forEach((btn) => {
+    btn.onclick = () => {
+      const tab = btn.dataset.textTab;
+      state.rightTab = tab;
+      pane.querySelectorAll('.text-tab').forEach((b) => b.classList.toggle('active', b === btn));
+      pane.querySelectorAll('.text-tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+    };
+  });
+}
+
+// Drag the right column's left edge to resize it. Width is stored as a CSS var
+// on <html> (--tf-user-w, read as the grid fallback) and persisted to
+// localStorage (TF_WIDTH_KEY, declared up top so the load-time apply runs
+// before this point's definitions). Double-click resets to the default.
+function tfWidthBounds() { return { min: 260, max: Math.min(720, Math.round(window.innerWidth * 0.55)) }; }
+function applySavedTextfieldsWidth() {
+  let w;
+  try { w = parseInt(localStorage.getItem(TF_WIDTH_KEY), 10); } catch {}
+  const { min, max } = tfWidthBounds();
+  if (w && w >= min) document.documentElement.style.setProperty('--tf-user-w', Math.min(w, max) + 'px');
+}
+function wireTextPaneResizer() {
+  const resizer = document.getElementById('text-pane-resizer');
+  const pane = document.querySelector('.text-pane');
+  if (!resizer || !pane) return;
+  resizer.onmousedown = (e) => {
+    e.preventDefault();
+    document.body.classList.remove('textfields-collapsed'); // a drag always expands
+    const startX = e.clientX;
+    const startW = pane.getBoundingClientRect().width;
+    document.body.classList.add('tf-resizing');
+    const onMove = (ev) => {
+      const { min, max } = tfWidthBounds();
+      const w = Math.max(min, Math.min(max, startW + (startX - ev.clientX)));
+      document.documentElement.style.setProperty('--tf-user-w', w + 'px');
+    };
+    const onUp = () => {
+      document.body.classList.remove('tf-resizing');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      const w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tf-user-w'), 10);
+      if (w) { try { localStorage.setItem(TF_WIDTH_KEY, w); } catch {} }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+  resizer.ondblclick = () => {
+    document.documentElement.style.removeProperty('--tf-user-w');
+    try { localStorage.removeItem(TF_WIDTH_KEY); } catch {}
+  };
 }
 
 /**
