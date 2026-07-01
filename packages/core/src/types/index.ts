@@ -424,6 +424,9 @@ export interface Project {
   /** Export history — every MP4 exported for this project, newest last. Each
    *  export writes a uniquely-named file so older ones aren't overwritten. */
   exports?: Array<{ path: string; createdAt: string; filename: string }>;
+  /** YouTube upload history, keyed by export filename — lets the studio mark
+   *  which exports have already been published (and link back to the video). */
+  youtubePosts?: Record<string, { videoId: string; url: string; postedAt: string }>;
   /**
    * v0.8: path to content-graph.json for multi-frame projects.
    * Absent for single-frame fast-path projects.

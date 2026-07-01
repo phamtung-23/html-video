@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
 import { AssetStore, generateTtsEdge, probeDurationSec } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
+import { buildAuthUrl as ytAuthUrl, exchangeCode as ytExchangeCode, getAccessToken as ytAccessToken, uploadVideo as ytUpload } from './youtube.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
 interface StudioHandle {
@@ -624,8 +625,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const fsp = await import('node:fs/promises');
         let names: string[] = [];
         try { names = (await fsp.readdir(dir)).filter((f) => /^output-[\w.-]+\.mp4$/.test(f)); } catch { /* none */ }
+        const posts = (await ctx.orchestrator.load(listExpMatch[1]).catch(() => null))?.youtubePosts ?? {};
         const items = await Promise.all(names.map(async (filename) => {
-          try { const st = await fsp.stat(join(dir, filename)); return { filename, path: join(dir, filename), sizeBytes: st.size, mtime: st.mtimeMs }; }
+          try { const st = await fsp.stat(join(dir, filename)); return { filename, path: join(dir, filename), sizeBytes: st.size, mtime: st.mtimeMs, youtube: posts[filename] ?? null }; }
           catch { return null; }
         }));
         const exports = items.filter((x): x is NonNullable<typeof x> => x !== null).sort((a, b) => b.mtime - a.mtime);
@@ -652,6 +654,89 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         }
         await ctx.projects.save(project);
         return json(res, 200, { ok: true });
+      }
+
+      // ── YouTube (personal channel) upload ─────────────────────────────────
+      // Loopback OAuth: redirect_uri uses the studio's own host:port, which the
+      // user registers in their Google Cloud OAuth client.
+      const ytRedirect = () => `http://${req.headers.host}/oauth/youtube/callback`;
+
+      if (url.pathname === '/api/youtube/status' && m === 'GET') {
+        return json(res, 200, { ...ctx.mediaConfig.getYouTubeStatus(), redirectUri: ytRedirect() });
+      }
+      if (url.pathname === '/api/youtube/credentials' && m === 'POST') {
+        const { clientId, clientSecret } = (await readBody(req)) as { clientId?: string; clientSecret?: string };
+        if (!clientId || !clientSecret) return json(res, 400, { error: 'clientId and clientSecret are required' });
+        ctx.mediaConfig.setYouTubeCreds(clientId, clientSecret);
+        return json(res, 200, { ...ctx.mediaConfig.getYouTubeStatus(), redirectUri: ytRedirect() });
+      }
+      if (url.pathname === '/api/youtube/auth-url' && m === 'GET') {
+        const y = ctx.mediaConfig.getYouTube();
+        if (!y.clientId) return json(res, 400, { error: 'Set the OAuth client id/secret first' });
+        return json(res, 200, { url: ytAuthUrl(y.clientId, ytRedirect()) });
+      }
+      if (url.pathname === '/oauth/youtube/callback' && m === 'GET') {
+        const code = url.searchParams.get('code');
+        const oauthErr = url.searchParams.get('error');
+        const page = (msg: string, ok: boolean) => {
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(`<!doctype html><meta charset=utf-8><body style="font-family:system-ui;background:#0a0a0a;color:#f4f4f2;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><div style="font-size:44px">${ok ? '✅' : '⚠️'}</div><p>${msg}</p><p style="color:#9a9a96;font-size:13px">Bạn có thể đóng tab này và quay lại studio.</p></div>`);
+        };
+        const y = ctx.mediaConfig.getYouTube();
+        if (oauthErr || !code) { page(`Kết nối thất bại: ${oauthErr || 'thiếu code'}`, false); return; }
+        if (!y.clientId || !y.clientSecret) { page('Chưa có client id/secret', false); return; }
+        try {
+          const { refreshToken } = await ytExchangeCode({ clientId: y.clientId, clientSecret: y.clientSecret, code, redirectUri: ytRedirect() });
+          ctx.mediaConfig.setYouTubeToken(refreshToken);
+          page('Đã kết nối YouTube!', true);
+        } catch (e) {
+          page(`Kết nối thất bại: ${e instanceof Error ? e.message : String(e)}`, false);
+        }
+        return;
+      }
+      if (url.pathname === '/api/youtube/disconnect' && m === 'POST') {
+        ctx.mediaConfig.clearYouTube({ keepCreds: true });
+        return json(res, 200, { ...ctx.mediaConfig.getYouTubeStatus() });
+      }
+      const ytUpMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/youtube\/upload$/);
+      if (ytUpMatch && ytUpMatch[1] && m === 'POST') {
+        const projectId = ytUpMatch[1];
+        const body = (await readBody(req)) as { filename?: string; title?: string; description?: string; privacy?: string; tags?: string[] };
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+        const sse = (o: unknown) => { try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* client gone */ } };
+        try {
+          const y = ctx.mediaConfig.getYouTube();
+          if (!y.clientId || !y.clientSecret || !y.refreshToken) {
+            sse({ type: 'yt_failed', message: 'Chưa kết nối YouTube — vào Cài đặt → YouTube để kết nối.' }); res.end(); return;
+          }
+          const filename = body.filename || '';
+          if (!/^output-[\w.-]+\.mp4$/.test(filename)) { sse({ type: 'yt_failed', message: 'Tên file không hợp lệ' }); res.end(); return; }
+          const filePath = join(await ctx.projects.ensureDir(projectId), filename);
+          if (!existsSync(filePath)) { sse({ type: 'yt_failed', message: 'Không tìm thấy file' }); res.end(); return; }
+          sse({ type: 'yt_progress', stage: 'auth' });
+          const accessToken = await ytAccessToken({ clientId: y.clientId, clientSecret: y.clientSecret, refreshToken: y.refreshToken });
+          sse({ type: 'yt_progress', stage: 'uploading' });
+          const bytes = await readFile(filePath);
+          const privacy = (['private', 'unlisted', 'public'].includes(String(body.privacy)) ? body.privacy : 'private') as 'private' | 'unlisted' | 'public';
+          const desc = (body.description || '').includes('#Shorts') ? body.description! : `${(body.description || '').trim()}\n\n#Shorts`.trim();
+          const r = await ytUpload({ accessToken, bytes, title: body.title || filename, description: desc, tags: body.tags, privacyStatus: privacy });
+          // Remember this export was published, so the Video tab can mark it.
+          try {
+            const project = await ctx.orchestrator.load(projectId);
+            project.youtubePosts = {
+              ...(project.youtubePosts ?? {}),
+              [filename]: { videoId: r.videoId, url: r.url, postedAt: new Date().toISOString() },
+            };
+            await ctx.projects.save(project);
+          } catch { /* marking is best-effort; the upload already succeeded */ }
+          sse({ type: 'yt_done', videoId: r.videoId, url: r.url });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          process.stderr.write(`[studio:youtube] proj=${projectId} failed: ${msg}\n`);
+          sse({ type: 'yt_failed', message: msg });
+        }
+        res.end();
+        return;
       }
 
       // Narration TTS config — GET status, POST to set the Edge-TTS voice.

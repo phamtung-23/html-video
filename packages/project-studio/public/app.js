@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-exportcard';
+import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-youtube';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -40,6 +40,7 @@ const ICON_PATHS = {
   copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  youtube: '<path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
   sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/>',
   cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
@@ -59,6 +60,14 @@ function icon(name, extraClass) {
 }
 // Leading icon (icon + text label): adds a right gap.
 function iconL(name) { return icon(name, 'ico-lead'); }
+
+// Official multi-colour YouTube logo (red body + white play triangle). Kept
+// separate from the monochrome icon() set — it has its own viewBox/aspect and
+// uses fills, not currentColor. Pass 'ico-lead' when it precedes a text label.
+function ytGlyph(extraClass) {
+  const cls = extraClass ? `ico-yt-logo ${extraClass}` : 'ico-yt-logo';
+  return `<svg class="${cls}" viewBox="0 0 256 180" preserveAspectRatio="xMidYMid" aria-hidden="true"><path fill="red" d="M250.346 28.075A32.18 32.18 0 0 0 227.69 5.418C207.824 0 127.87 0 127.87 0S47.912.164 28.046 5.582A32.18 32.18 0 0 0 5.39 28.24c-6.009 35.298-8.34 89.084.165 122.97a32.18 32.18 0 0 0 22.656 22.657c19.866 5.418 99.822 5.418 99.822 5.418s79.955 0 99.82-5.418a32.18 32.18 0 0 0 22.657-22.657c6.338-35.348 8.291-89.1-.164-123.134Z"/><path fill="#FFF" d="m102.421 128.06 66.328-38.418-66.328-38.418z"/></svg>`;
+}
 
 // ─── Theme (light / dark / auto) ──────────────────────────────────────────────
 // Stored in localStorage; written to <html data-theme> ('light'|'dark') or
@@ -1016,18 +1025,23 @@ async function renderExportsPanel() {
     return;
   }
   wrap.innerHTML = items.map((e) => `
-    <div class="export-item" data-file="${esc(e.filename)}" data-path="${esc(e.path)}">
+    <div class="export-item${e.youtube ? ' is-posted' : ''}" data-file="${esc(e.filename)}" data-path="${esc(e.path)}">
       <video class="export-video" controls preload="metadata" src="/asset?path=${encodeURIComponent(e.path)}"></video>
       <div class="export-row">
         <div class="export-meta">
           <span class="export-name" title="${esc(e.filename)}">${esc(e.filename)}</span>
           <span class="export-sub">${fmtBytes(e.sizeBytes)} · ${fmtWhen(e.mtime)}</span>
         </div>
+        <button class="export-btn-icon export-youtube" title="${e.youtube ? 'Đăng lại lên YouTube' : 'Đăng YouTube Short'}">${ytGlyph()}</button>
         <button class="export-btn-icon export-reveal" title="${esc(t('exports.reveal'))}">${icon('externalLink')}</button>
         <button class="export-btn-icon export-del" title="${esc(t('exports.delete'))}">${icon('trash')}</button>
       </div>
+      ${e.youtube ? `<a class="export-posted" href="${esc(e.youtube.url)}" target="_blank" rel="noopener" title="Mở trên YouTube">${icon('check', 'ico-lead')}Đã đăng YouTube${e.youtube.postedAt ? ` · ${fmtWhen(Date.parse(e.youtube.postedAt))}` : ''}</a>` : ''}
     </div>`).join('');
 
+  wrap.querySelectorAll('.export-youtube').forEach((btn) => {
+    btn.onclick = () => { const f = btn.closest('.export-item')?.dataset.file; if (f) openYouTubeUpload(f); };
+  });
   wrap.querySelectorAll('.export-reveal').forEach((btn) => {
     btn.onclick = async () => {
       const path = btn.closest('.export-item')?.dataset.path;
@@ -1658,7 +1672,9 @@ function renderChatLog() {
       const action = btn.dataset.exportAction;
       const card = btn.closest('.export-done');
       const path = card?.querySelector('.export-path code')?.textContent ?? '';
-      if (action === 'open-video') {
+      if (action === 'youtube') {
+        openYouTubeUpload((path.split('/').pop() || ''));
+      } else if (action === 'open-video') {
         // Jump to the Video tab in the right pane (un-collapse it first).
         document.body.classList.remove('textfields-collapsed');
         document.querySelector('.text-tab[data-text-tab="exports"]')?.click();
@@ -1717,6 +1733,7 @@ function renderMessage(m, idx) {
       <div class="export-title">${iconL('clapperboard')}${t('export.title')}</div>
       <div class="export-path"><code>${esc(path)}</code></div>
       <div class="export-actions">
+        <button class="export-btn-icon" data-export-action="youtube" title="Đăng YouTube Short">${ytGlyph()}</button>
         <button class="export-btn-icon" data-export-action="open-video" title="${esc(t('export.open_video'))}">${icon('film')}</button>
         <button class="export-btn-icon" data-export-action="reveal" title="${esc(t('export.reveal'))}">${icon('folder')}</button>
         <button class="export-btn-icon" data-export-action="copy" title="${esc(t('export.copy_path'))}">${icon('copy')}</button>
@@ -3331,7 +3348,14 @@ function renderSettingsGeneral(panel) {
         ${langOpt('en')}
       </div>
     </div>
+
+    <div class="settings-section">
+      <h4>${ytGlyph('ico-lead')}YouTube</h4>
+      <div class="section-sub">Kết nối kênh của bạn để đăng Short thẳng từ studio (dùng tài khoản riêng).</div>
+      <div id="yt-connect"><div class="section-sub">Đang kiểm tra…</div></div>
+    </div>
   `;
+  renderYouTubeConnect(panel.querySelector('#yt-connect'));
   panel.querySelectorAll('[data-theme-opt]').forEach((btn) => {
     btn.onclick = () => { setTheme(btn.dataset.themeOpt); renderSettingsGeneral(panel); };
   });
@@ -3343,6 +3367,119 @@ function renderSettingsGeneral(panel) {
       renderSettingsGeneral(panel);
     };
   });
+}
+
+// ── YouTube connect (Settings → General) ──────────────────────────────────
+async function renderYouTubeConnect(el) {
+  if (!el) return;
+  let st;
+  try { st = await (await fetch('/api/youtube/status')).json(); }
+  catch { el.innerHTML = '<div class="section-sub">Không tải được trạng thái YouTube.</div>'; return; }
+  if (st.connected) {
+    el.innerHTML = `<div class="yt-row"><span class="yt-ok">${iconL('check')}Đã kết nối kênh</span>
+      <button class="yt-btn" id="yt-disc">Ngắt kết nối</button></div>`;
+    el.querySelector('#yt-disc').onclick = async () => { await fetch('/api/youtube/disconnect', { method: 'POST' }); renderYouTubeConnect(el); };
+    return;
+  }
+  if (st.hasCreds) {
+    el.innerHTML = `
+      <div class="yt-note">Thêm URI này vào <b>Authorized redirect URIs</b> của OAuth client (Google Cloud):
+        <code class="yt-uri">${esc(st.redirectUri || '')}</code></div>
+      <div class="yt-row">
+        <button class="yt-btn yt-primary" id="yt-conn">${iconL('externalLink')}Kết nối</button>
+        <button class="yt-btn" id="yt-recheck">Đã cho phép — kiểm tra</button>
+        <button class="yt-btn" id="yt-edit">Sửa khóa</button>
+      </div>`;
+    el.querySelector('#yt-conn').onclick = async () => {
+      try { const r = await (await fetch('/api/youtube/auth-url')).json(); if (r.url) window.open(r.url, '_blank', 'width=520,height=700'); else throw new Error(r.error || 'no url'); }
+      catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+    };
+    el.querySelector('#yt-recheck').onclick = () => renderYouTubeConnect(el);
+    el.querySelector('#yt-edit').onclick = () => renderYouTubeCreds(el);
+    return;
+  }
+  renderYouTubeCreds(el);
+}
+function renderYouTubeCreds(el) {
+  el.innerHTML = `
+    <div class="yt-note">Dán OAuth <b>Client ID</b> & <b>Client Secret</b> (Google Cloud → APIs → Credentials).</div>
+    <input class="yt-input" id="yt-cid" placeholder="Client ID" autocomplete="off" />
+    <input class="yt-input" id="yt-csec" placeholder="Client Secret" type="password" autocomplete="off" />
+    <div class="yt-row"><button class="yt-btn yt-primary" id="yt-save">Lưu khóa</button></div>`;
+  el.querySelector('#yt-save').onclick = async () => {
+    const clientId = el.querySelector('#yt-cid').value.trim();
+    const clientSecret = el.querySelector('#yt-csec').value.trim();
+    if (!clientId || !clientSecret) { toast('Nhập đủ Client ID + Secret', 'error'); return; }
+    try {
+      const r = await fetch('/api/youtube/credentials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId, clientSecret }) });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+      renderYouTubeConnect(el);
+    } catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+  };
+}
+
+// ── Publish an exported MP4 to YouTube Shorts ─────────────────────────────
+async function openYouTubeUpload(filename) {
+  let st; try { st = await (await fetch('/api/youtube/status')).json(); } catch { st = {}; }
+  if (!st.connected) { toast('Chưa kết nối YouTube — vào Cài đặt → YouTube.', 'error'); openSettingsModal('general'); return; }
+  const defTitle = (state.selected?.name || filename.replace(/\.mp4$/, '')).slice(0, 90);
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg show';
+  ov.innerHTML = `<div class="modal yt-modal">
+    <div class="settings-head"><h2>${ytGlyph('ico-lead')}Đăng YouTube Short</h2>
+      <button class="modal-close" id="ytm-x" aria-label="Close">${icon('x')}</button></div>
+    <div class="yt-modal-body">
+      <label class="yt-flabel">Tiêu đề</label>
+      <input class="yt-input" id="ytm-title" value="${esc(defTitle)}" maxlength="100" />
+      <label class="yt-flabel">Mô tả</label>
+      <textarea class="yt-input" id="ytm-desc" rows="3" placeholder="Mô tả… (#Shorts sẽ được tự thêm)"></textarea>
+      <label class="yt-flabel">Chế độ hiển thị</label>
+      <select class="yt-input" id="ytm-priv">
+        <option value="private">Riêng tư (private)</option>
+        <option value="unlisted">Không công khai (unlisted)</option>
+        <option value="public">Công khai (public)</option>
+      </select>
+      <div class="yt-modal-actions">
+        <span class="yt-status" id="ytm-status"></span>
+        <button class="yt-btn yt-primary" id="ytm-go">${ytGlyph('ico-lead')}Đăng</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('#ytm-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const statusEl = ov.querySelector('#ytm-status');
+  const goBtn = ov.querySelector('#ytm-go');
+  goBtn.onclick = async () => {
+    goBtn.disabled = true;
+    statusEl.textContent = 'Đang chuẩn bị…';
+    const payload = {
+      filename,
+      title: ov.querySelector('#ytm-title').value.trim() || defTitle,
+      description: ov.querySelector('#ytm-desc').value,
+      privacy: ov.querySelector('#ytm-priv').value,
+    };
+    try {
+      const res = await fetch(`/api/projects/${state.selected.id}/youtube/upload`, {
+        method: 'POST', headers: { accept: 'text/event-stream', 'content-type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n'); buf = parts.pop() ?? '';
+        for (const line of parts) {
+          if (!line.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.type === 'yt_progress') statusEl.textContent = ev.stage === 'auth' ? 'Xác thực…' : 'Đang tải lên…';
+          else if (ev.type === 'yt_done') { statusEl.innerHTML = `${iconL('check')}Đã đăng! <a href="${esc(ev.url)}" target="_blank" rel="noopener">Mở video</a>`; toast('Đã đăng YouTube Short ✓', 'success'); goBtn.textContent = 'Đã đăng'; if (state.rightTab === 'exports') renderExportsPanel(); }
+          else if (ev.type === 'yt_failed') { statusEl.textContent = 'Lỗi: ' + ev.message; toast('Đăng thất bại: ' + ev.message, 'error'); goBtn.disabled = false; }
+        }
+      }
+    } catch (e) { statusEl.textContent = 'Lỗi: ' + (e?.message ?? e); goBtn.disabled = false; }
+  };
 }
 
 function renderSettingsAbout(panel) {

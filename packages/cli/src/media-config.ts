@@ -13,6 +13,7 @@ import { resolveEdgeTtsCommand, EDGE_TTS_DEFAULT_VOICE } from '@html-video/core'
 
 interface MediaConfig {
   tts?: { edgeVoice?: string };
+  youtube?: { clientId?: string; clientSecret?: string; refreshToken?: string };
 }
 
 export class MediaConfigStore {
@@ -71,5 +72,46 @@ export class MediaConfigStore {
   /** Status payload for the Settings UI / doctor. */
   getTtsStatus(): { edgeAvailable: boolean; edgeVoice: string } {
     return { edgeAvailable: this.edgeAvailable(), edgeVoice: this.getEdgeVoice() };
+  }
+
+  // ── YouTube (personal channel) OAuth ──────────────────────────────────────
+  /** Raw stored YouTube config (client id/secret + refresh token). */
+  getYouTube(): { clientId?: string; clientSecret?: string; refreshToken?: string } {
+    return this.read().youtube ?? {};
+  }
+
+  /** Save the user's OAuth client id + secret (from their Google Cloud project). */
+  setYouTubeCreds(clientId: string, clientSecret: string): void {
+    const cfg = this.read();
+    cfg.youtube = {
+      ...(cfg.youtube ?? {}),
+      clientId: (clientId ?? '').trim(),
+      clientSecret: (clientSecret ?? '').trim(),
+    };
+    this.write(cfg);
+  }
+
+  /** Save the long-lived refresh token obtained after the consent flow. */
+  setYouTubeToken(refreshToken: string): void {
+    const cfg = this.read();
+    cfg.youtube = { ...(cfg.youtube ?? {}), refreshToken: (refreshToken ?? '').trim() };
+    this.write(cfg);
+  }
+
+  /** Forget the connection (keeps creds; drops the token) or everything. */
+  clearYouTube(opts?: { keepCreds?: boolean }): void {
+    const cfg = this.read();
+    if (opts?.keepCreds && cfg.youtube) {
+      delete cfg.youtube.refreshToken;
+    } else {
+      delete cfg.youtube;
+    }
+    this.write(cfg);
+  }
+
+  /** Status for the Settings UI: are creds set, and are we connected? */
+  getYouTubeStatus(): { hasCreds: boolean; connected: boolean } {
+    const y = this.getYouTube();
+    return { hasCreds: !!(y.clientId && y.clientSecret), connected: !!y.refreshToken };
   }
 }
