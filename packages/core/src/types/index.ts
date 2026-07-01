@@ -383,6 +383,8 @@ export interface ProjectSoundtrack {
   musicVolumeDb?: number;
   /** Narration gain in dB (default 0) */
   narrationVolumeDb?: number;
+  /** Narration speaking rate as a multiplier (1.0 = normal; maps to edge-tts --rate) */
+  narrationSpeed?: number;
   /** Last music style prompt used — kept so the UI can show / re-run it */
   musicPrompt?: string;
   /** Last narration text used (the stitched full script) */

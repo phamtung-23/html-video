@@ -416,7 +416,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (genAudioMatch && genAudioMatch[1] && m === 'POST') {
         const projectId = genAudioMatch[1];
         const body = (await readBody(req)) as {
-          narration?: { text?: string; voiceId?: string; volumeDb?: number; byFrame?: Record<string, string> };
+          narration?: { text?: string; voiceId?: string; volumeDb?: number; speed?: number; byFrame?: Record<string, string> };
           fadeInSec?: number;
           fadeOutSec?: number;
         };
@@ -462,9 +462,16 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             const edgeVoice = reqVoice && /^[a-z]{2}-[A-Z]{2}-/.test(reqVoice)
               ? reqVoice
               : ctx.mediaConfig.getEdgeVoice();
+            // Speaking rate (0.5–1.5×). Clamp defensively; generateTtsEdge maps
+            // it to edge-tts's --rate flag.
+            const reqSpeed = body.narration!.speed;
+            const speed = typeof reqSpeed === 'number' && Number.isFinite(reqSpeed)
+              ? Math.min(1.5, Math.max(0.5, reqSpeed))
+              : 1;
             const nar = await generateTtsEdge({
               text: narText,
               voiceId: edgeVoice,
+              speed,
               projectRoot: ctx.projectRoot,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
@@ -477,6 +484,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             soundtrack.narrationText = narText;
             if (body.narration!.byFrame) soundtrack.narrationByFrame = body.narration!.byFrame;
             if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
+            soundtrack.narrationSpeed = speed;
             sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
           }
 
@@ -589,7 +597,14 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       const revealMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/reveal$/);
       if (revealMatch && revealMatch[1] && m === 'POST') {
         const project = await ctx.orchestrator.load(revealMatch[1]);
-        const target = project.lastOutputMp4Path;
+        // Optional {path} reveals a SPECIFIC export (the Video tab); otherwise
+        // fall back to the latest export. The path must stay inside projects/.
+        const body = (await readBody(req).catch(() => ({}))) as { path?: string };
+        let target = project.lastOutputMp4Path;
+        if (body.path) {
+          const safe = resolve(body.path);
+          if (safe.includes('/.html-video/projects/') && existsSync(safe)) target = safe;
+        }
         if (!target || !existsSync(target)) {
           return json(res, 404, { error: 'No exported MP4 to reveal' });
         }
@@ -599,6 +614,44 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const args = platform === 'darwin' ? ['-R', target] : [target];
         spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
         return json(res, 200, { ok: true, target, platform });
+      }
+
+      // List every exported MP4 of a project (newest first) — powers the Video
+      // tab so users can review / delete past exports.
+      const listExpMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/exports$/);
+      if (listExpMatch && listExpMatch[1] && m === 'GET') {
+        const dir = await ctx.projects.ensureDir(listExpMatch[1]);
+        const fsp = await import('node:fs/promises');
+        let names: string[] = [];
+        try { names = (await fsp.readdir(dir)).filter((f) => /^output-[\w.-]+\.mp4$/.test(f)); } catch { /* none */ }
+        const items = await Promise.all(names.map(async (filename) => {
+          try { const st = await fsp.stat(join(dir, filename)); return { filename, path: join(dir, filename), sizeBytes: st.size, mtime: st.mtimeMs }; }
+          catch { return null; }
+        }));
+        const exports = items.filter((x): x is NonNullable<typeof x> => x !== null).sort((a, b) => b.mtime - a.mtime);
+        return json(res, 200, { exports });
+      }
+
+      // Delete one exported MP4 by filename (validated to stay in the dir).
+      const delExpMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/delete-export$/);
+      if (delExpMatch && delExpMatch[1] && m === 'POST') {
+        const projectId = delExpMatch[1];
+        const { filename } = (await readBody(req)) as { filename?: string };
+        if (!filename || !/^output-[\w.-]+\.mp4$/.test(filename)) {
+          return json(res, 400, { error: 'invalid export filename' });
+        }
+        const dir = await ctx.projects.ensureDir(projectId);
+        const fsp = await import('node:fs/promises');
+        try { await fsp.unlink(join(dir, filename)); } catch { /* already gone */ }
+        const project = await ctx.orchestrator.load(projectId);
+        project.exports = (project.exports ?? []).filter((e) => e.filename !== filename && !e.path.endsWith(`/${filename}`));
+        if (project.lastOutputMp4Path && project.lastOutputMp4Path.endsWith(`/${filename}`)) {
+          const last = project.exports[project.exports.length - 1];
+          if (last) project.lastOutputMp4Path = last.path;
+          else delete project.lastOutputMp4Path;
+        }
+        await ctx.projects.save(project);
+        return json(res, 200, { ok: true });
       }
 
       // Narration TTS config — GET status, POST to set the Edge-TTS voice.

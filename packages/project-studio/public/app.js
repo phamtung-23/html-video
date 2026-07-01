@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-narr';
+import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-exports';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -22,6 +22,7 @@ const ICON_PATHS = {
   trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
   film: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
@@ -80,9 +81,21 @@ applySavedTextfieldsWidth();
 
 // Narration voices (free, key-less Edge-TTS). `key` maps to a localized label
 // (soundtrack.voice_<key>); the value is the Edge voice id.
+// All Edge-TTS (free, key-less) neural voices. The server accepts any
+// locale-prefixed voice id, so adding one here is all that's needed.
 const NARRATION_VOICES = [
-  { key: 'vi_female_edge', voiceId: 'vi-VN-HoaiMyNeural' },
-  { key: 'vi_male_edge',   voiceId: 'vi-VN-NamMinhNeural' },
+  // Tiếng Việt
+  { key: 'vi_female_edge',         voiceId: 'vi-VN-HoaiMyNeural' },
+  { key: 'vi_male_edge',           voiceId: 'vi-VN-NamMinhNeural' },
+  // English — US
+  { key: 'en_us_male_guy',         voiceId: 'en-US-GuyNeural' },
+  { key: 'en_us_male_christopher', voiceId: 'en-US-ChristopherNeural' },
+  { key: 'en_us_male_eric',        voiceId: 'en-US-EricNeural' },
+  { key: 'en_us_female_aria',      voiceId: 'en-US-AriaNeural' },
+  { key: 'en_us_female_jenny',     voiceId: 'en-US-JennyNeural' },
+  // English — UK
+  { key: 'en_gb_male_ryan',        voiceId: 'en-GB-RyanNeural' },
+  { key: 'en_gb_female_sonia',     voiceId: 'en-GB-SoniaNeural' },
 ];
 
 const API = {
@@ -840,14 +853,15 @@ function renderMain() {
           <div class="text-pane-resizer" id="text-pane-resizer" title="${t('text_pane.resize_hint')}"></div>
           <div class="text-pane-head">
             <div class="text-tabs" role="tablist">
-              <button class="text-tab${state.rightTab === 'narration' ? '' : ' active'}" data-text-tab="text">${iconL('edit')}${t('text_pane.tab_text')}</button>
+              <button class="text-tab${state.rightTab === 'text' ? ' active' : ''}" data-text-tab="text">${iconL('edit')}${t('text_pane.tab_text')}</button>
               <button class="text-tab${state.rightTab === 'narration' ? ' active' : ''}" data-text-tab="narration">${iconL('mic')}${t('text_pane.tab_narration')}</button>
+              <button class="text-tab${state.rightTab === 'exports' ? ' active' : ''}" data-text-tab="exports">${iconL('film')}${t('text_pane.tab_exports')}</button>
             </div>
             <button class="textfields-toggle" id="btn-textfields-toggle" title="${t('text_pane.collapse')}">›</button>
           </div>
           <div class="text-pane-body">
             <!-- Tab 1: per-frame editable text -->
-            <div class="text-tab-panel" data-panel="text"${state.rightTab === 'narration' ? ' hidden' : ''}>
+            <div class="text-tab-panel" data-panel="text"${state.rightTab === 'text' ? '' : ' hidden'}>
               <div class="text-fields-bar"><span class="save-state" id="text-save-state">${t('text_pane.save_state.idle')}</span></div>
               <div class="text-fields" id="text-fields">
                 <div class="text-empty">${t('text_pane.empty_no_frames')}</div>
@@ -886,6 +900,7 @@ function renderMain() {
                       <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
                     </div>
                     <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
+                    <div class="st-vol-row"><label>${t('soundtrack.narration_speed')} <input type="range" id="st-narration-speed" min="0.5" max="1.5" step="0.05" value="1" /><b id="st-narration-speed-val">1.00×</b></label></div>
                     <div class="st-section-actions">
                       <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
                       <span class="st-status" id="st-narration-status"></span>
@@ -897,6 +912,10 @@ function renderMain() {
                 </div>
                 <div class="soundtrack-preview" id="st-preview"></div>
               </div>
+            </div>
+            <!-- Tab 3: exported MP4s — review / open / delete -->
+            <div class="text-tab-panel exports-tab" data-panel="exports"${state.rightTab === 'exports' ? '' : ' hidden'}>
+              <div class="exports-list" id="exports-list"></div>
             </div>
           </div>
         </section>
@@ -945,7 +964,7 @@ function renderMain() {
   }
 }
 
-// Right column tabs: "frame text" editor vs "narration / voiceover".
+// Right column tabs: frame-text editor / narration / exported videos.
 function wireTextPaneTabs() {
   const pane = document.querySelector('.text-pane');
   if (!pane) return;
@@ -955,6 +974,78 @@ function wireTextPaneTabs() {
       state.rightTab = tab;
       pane.querySelectorAll('.text-tab').forEach((b) => b.classList.toggle('active', b === btn));
       pane.querySelectorAll('.text-tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+      if (tab === 'exports') renderExportsPanel();
+    };
+  });
+  // If the pane opens straight onto the exports tab, load it now.
+  if (state.rightTab === 'exports') renderExportsPanel();
+}
+
+// ── Exported videos tab ───────────────────────────────────────────────────────
+function fmtBytes(n) {
+  if (!n || n < 1024) return `${n || 0} B`;
+  const mb = n / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`;
+}
+function fmtWhen(ms) {
+  const d = new Date(ms);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function renderExportsPanel() {
+  const wrap = document.getElementById('exports-list');
+  if (!wrap || !state.selected) return;
+  wrap.innerHTML = `<div class="text-empty">${esc(t('exports.loading'))}</div>`;
+  let items = [];
+  try {
+    const r = await fetch(`/api/projects/${state.selected.id}/exports`);
+    items = (await r.json()).exports ?? [];
+  } catch {
+    wrap.innerHTML = `<div class="text-empty">${esc(t('exports.failed'))}</div>`;
+    return;
+  }
+  if (!items.length) {
+    wrap.innerHTML = `<div class="text-empty">${esc(t('exports.empty'))}</div>`;
+    return;
+  }
+  wrap.innerHTML = items.map((e) => `
+    <div class="export-item" data-file="${esc(e.filename)}" data-path="${esc(e.path)}">
+      <video class="export-video" controls preload="metadata" src="/asset?path=${encodeURIComponent(e.path)}"></video>
+      <div class="export-row">
+        <div class="export-meta">
+          <span class="export-name" title="${esc(e.filename)}">${esc(e.filename)}</span>
+          <span class="export-sub">${fmtBytes(e.sizeBytes)} · ${fmtWhen(e.mtime)}</span>
+        </div>
+        <button class="export-btn-icon export-reveal" title="${esc(t('exports.reveal'))}">${icon('externalLink')}</button>
+        <button class="export-btn-icon export-del" title="${esc(t('exports.delete'))}">${icon('trash')}</button>
+      </div>
+    </div>`).join('');
+
+  wrap.querySelectorAll('.export-reveal').forEach((btn) => {
+    btn.onclick = async () => {
+      const path = btn.closest('.export-item')?.dataset.path;
+      try { await fetch(`/api/projects/${state.selected.id}/reveal`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path }) }); }
+      catch (e) { toast(t('export.reveal_failed', { message: (e?.message ?? e) }), 'error'); }
+    };
+  });
+  wrap.querySelectorAll('.export-del').forEach((btn) => {
+    btn.onclick = async () => {
+      const item = btn.closest('.export-item');
+      const filename = item?.dataset.file;
+      if (!filename) return;
+      if (!confirm(t('exports.delete_confirm', { name: filename }))) return;
+      try {
+        const r = await fetch(`/api/projects/${state.selected.id}/delete-export`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        item.remove();
+        if (!wrap.querySelector('.export-item')) wrap.innerHTML = `<div class="text-empty">${esc(t('exports.empty'))}</div>`;
+        toast(t('exports.deleted'), 'success');
+      } catch (e) {
+        toast(t('exports.delete_failed', { message: (e?.message ?? e) }), 'error');
+      }
     };
   });
 }
@@ -1012,6 +1103,8 @@ function wireSoundtrackPanel() {
   const narrationText = document.getElementById('st-narration-text');
   const narrationVol = document.getElementById('st-narration-vol');
   const narrationVolVal = document.getElementById('st-narration-vol-val');
+  const narrationSpeed = document.getElementById('st-narration-speed');
+  const narrationSpeedVal = document.getElementById('st-narration-speed-val');
   const genNarrationBtn = document.getElementById('btn-st-gen-narration');
   const clearBtn = document.getElementById('btn-st-clear');
   const narrationStatusEl = document.getElementById('st-narration-status');
@@ -1146,10 +1239,16 @@ function wireSoundtrackPanel() {
   const st = state.selected?.soundtrack;
   if (st) {
     if (typeof st.narrationVolumeDb === 'number') narrationVol.value = String(st.narrationVolumeDb);
+    if (typeof st.narrationSpeed === 'number' && narrationSpeed) narrationSpeed.value = String(st.narrationSpeed);
     renderSoundtrackPreview(st);
   }
   narrationVolVal.textContent = `${narrationVol.value} dB`;
   narrationVol.oninput = () => { narrationVolVal.textContent = `${narrationVol.value} dB`; };
+  if (narrationSpeed && narrationSpeedVal) {
+    const showSpeed = () => { narrationSpeedVal.textContent = `${Number(narrationSpeed.value).toFixed(2)}×`; };
+    showSpeed();
+    narrationSpeed.oninput = showSpeed;
+  }
 
   clearBtn.onclick = async () => {
     if (!state.selected) return;
@@ -1174,7 +1273,7 @@ function wireSoundtrackPanel() {
       const nt = stitched || narrationText.value.trim();
       if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
       const voiceSel = document.getElementById('st-narration-voice');
-      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
+      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), speed: Number(narrationSpeed?.value ?? 1), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
     }
 
     const label = btn?.innerHTML;
@@ -1582,13 +1681,13 @@ function renderMessage(m, idx) {
     // show a friendlier label instead of a wall of "topic=foo\nheadline=bar…".
     const formMatch = /^\[hv-form:submit\]\n([\s\S]*)$/.exec(m.content ?? '');
     if (formMatch) {
-      return `<div class="msg user">${t('chat.summary.form_submitted')}</div>`;
+      return `<div class="msg user">${iconL('clipboard')}${t('chat.summary.form_submitted')}</div>`;
     }
     if ((m.content ?? '').trim() === '[hv-confirm:generate]') {
-      return `<div class="msg user">${t('chat.summary.confirm_generate')}</div>`;
+      return `<div class="msg user">${iconL('check')}${t('chat.summary.confirm_generate')}</div>`;
     }
     if ((m.content ?? '').trim() === '[hv-confirm:edit]') {
-      return `<div class="msg user">${t('chat.summary.confirm_edit')}</div>`;
+      return `<div class="msg user">${iconL('edit')}${t('chat.summary.confirm_edit')}</div>`;
     }
     return `<div class="msg user">${esc(m.content)}</div>`;
   }
