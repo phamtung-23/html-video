@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTtsEdge } from '@html-video/core';
+import { AssetStore, generateTtsEdge, probeDurationSec } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -1233,13 +1233,28 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           return json(res, 400, { error: 'No narration yet — draft narration first, then fit.' });
         }
         const MIN = 2;
-        // Keep total duration, but if there isn't enough to give every frame the
-        // minimum at its char-share, scale the total up so MIN is always honored
-        // (≈0.18s of speech per character is a comfortable narration pace).
-        const SEC_PER_CHAR = 0.18;
-        const currentTotal = graph.nodes.reduce((s, n) => s + (n.durationSec ?? MIN), 0);
-        const neededForSpeech = Math.ceil(totalChars * SEC_PER_CHAR);
-        const total = Math.max(currentTotal, neededForSpeech, MIN * graph.nodes.length);
+        // Prefer the REAL synthesized narration length: probe the generated
+        // narration asset (mp3). Char-count is only a rough fallback when the
+        // voiceover hasn't been synthesized yet — and even then Edge-TTS speaks
+        // far faster than the old 0.18s/char guess (VN ≈ 0.06s/char), which used
+        // to inflate a 27s voiceover into a ~78s video with a long silent tail.
+        const SEC_PER_CHAR = 0.09; // fallback estimate only (no audio yet)
+        let realNarrationSec: number | undefined;
+        try {
+          const proj = await ctx.orchestrator.load(projectId);
+          const narrId = proj.soundtrack?.narrationAssetId;
+          const narrPath = narrId ? proj.assets.find((a) => a.id === narrId)?.path : undefined;
+          if (narrPath) realNarrationSec = probeDurationSec(narrPath);
+        } catch { /* fall back to the estimate below */ }
+        // +1s tail so the last frame holds briefly after the final word (and
+        // `-shortest` at mux time never clips the closing syllable).
+        const total = realNarrationSec && realNarrationSec > 0
+          ? Math.max(Math.ceil(realNarrationSec) + 1, MIN * graph.nodes.length)
+          : Math.max(
+              graph.nodes.reduce((s, n) => s + (n.durationSec ?? MIN), 0),
+              Math.ceil(totalChars * SEC_PER_CHAR),
+              MIN * graph.nodes.length,
+            );
         // Proportional by char share, then lift any frame below MIN.
         let durs = graph.nodes.map((n) => ({ n, d: Math.max(MIN, Math.round((lenOf(n.id) / totalChars) * total)) }));
         // Re-normalize so the rounded sum matches `total` (adjust the longest frame).

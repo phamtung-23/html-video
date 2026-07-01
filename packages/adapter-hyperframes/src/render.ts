@@ -94,6 +94,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // ready, then release it so capture and motion start together — the same
     // shape as the multi-composition paused→drive path below.
     await page.addInitScript(() => {
+      // 1) Freeze CSS @keyframes animations at frame 0.
       const style = document.createElement('style');
       style.id = '__hv_freeze';
       style.textContent =
@@ -102,8 +103,33 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       const attach = () => (document.head || document.documentElement).appendChild(style);
       if (document.head || document.documentElement) attach();
       else document.addEventListener('DOMContentLoaded', attach, { once: true });
-      (window as unknown as { __hvUnfreeze?: () => void }).__hvUnfreeze = () => {
+
+      // 2) Freeze auto-playing GSAP at t=0. Most agent-authored frames run their
+      //    entrance via `gsap.timeline()`, which plays the moment the frame's
+      //    <script> executes — i.e. DURING the page-load/font lead-in that we
+      //    later trim off the front. `animation-play-state` only pauses CSS
+      //    @keyframes, not GSAP, so without this the reveal happens off-camera
+      //    and the recording opens on the already-settled frame. gsap loads via a
+      //    <script> after this init script, so poll for it and pause its global
+      //    timeline at 0 as soon as it appears; __hvUnfreeze replays it from 0
+      //    when recording truly starts.
+      const w = window as unknown as {
+        gsap?: { globalTimeline?: { pause: (t?: number) => void; play: (t?: number) => void } };
+        __hvUnfreeze?: () => void;
+      };
+      const freezeGsap = () => {
+        const gt = w.gsap?.globalTimeline;
+        if (gt) { try { gt.pause(0); } catch { /* noop */ } return true; }
+        return false;
+      };
+      if (!freezeGsap()) {
+        const iv = setInterval(() => { if (freezeGsap()) clearInterval(iv); }, 8);
+        setTimeout(() => clearInterval(iv), 10000);
+      }
+
+      w.__hvUnfreeze = () => {
         document.getElementById('__hv_freeze')?.remove();
+        try { w.gsap?.globalTimeline?.play(0); } catch { /* noop */ }
       };
     });
 
@@ -260,14 +286,18 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
         return Math.max(maxMs, gsapMs);
       });
       // +0.4s settle so the final animation frame is actually captured; cap at
-      // 30s so a stray huge value can't make a frame run away.
+      // 30s so a stray huge value can't make a frame run away. Infinite loops
+      // are already excluded above, so `needed` is the finite time the entrance/
+      // reveal animation needs to fully play out.
       const needed = Math.min(30, (animMs + 400) / 1000);
-      // Only extend when the duration is a soft 'auto' fallback. When the user
-      // set an explicit per-frame length (multi-frame export), it's a hard cap —
-      // honoring it keeps "每帧 4s" at 4s instead of letting one long animation
-      // stretch the frame toward the 30s ceiling.
-      if (input.config.durationMode !== 'explicit' && needed > totalDuration) {
-        ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s for animation`);
+      // The requested per-frame length is a MINIMUM/target, never a mid-animation
+      // cut: if the animation genuinely needs more time than the requested length
+      // (e.g. a fit shortened the frame below its animation), extend so the effect
+      // plays out from start to finish instead of being chopped. When the
+      // animation fits (the normal case — templates are authored to settle within
+      // the frame), this is a no-op and the requested length holds.
+      if (needed > totalDuration) {
+        ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s so the animation finishes`);
         totalDuration = needed;
       }
     } catch { /* probe failed — fall back to the requested duration */ }

@@ -117,7 +117,7 @@ function speedToRate(speed: number): string {
 }
 
 /** Probe duration with ffprobe (best-effort; undefined if ffprobe is absent). */
-function probeDurationSec(file: string): number | undefined {
+export function probeDurationSec(file: string): number | undefined {
   try {
     const out = execFileSync(
       'ffprobe',

@@ -15,6 +15,7 @@ export type {
 } from './project.js';
 export {
   generateTtsEdge,
+  probeDurationSec,
   resolveEdgeTtsCommand,
   edgeTtsVenvBin,
   EDGE_TTS_VIETNAMESE_VOICES,
