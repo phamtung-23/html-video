@@ -14,6 +14,7 @@ import type { CliContext } from './context.js';
 import { AssetStore, generateTtsEdge, probeDurationSec } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { buildAuthUrl as ytAuthUrl, exchangeCode as ytExchangeCode, getAccessToken as ytAccessToken, uploadVideo as ytUpload } from './youtube.js';
+import { buildAuthUrl as fbAuthUrl, exchangeCode as fbExchangeCode, listPages as fbListPages, uploadReel as fbUploadReel } from './facebook.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
 interface StudioHandle {
@@ -625,9 +626,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const fsp = await import('node:fs/promises');
         let names: string[] = [];
         try { names = (await fsp.readdir(dir)).filter((f) => /^output-[\w.-]+\.mp4$/.test(f)); } catch { /* none */ }
-        const posts = (await ctx.orchestrator.load(listExpMatch[1]).catch(() => null))?.youtubePosts ?? {};
+        const proj = await ctx.orchestrator.load(listExpMatch[1]).catch(() => null);
+        const posts = proj?.youtubePosts ?? {};
+        const fbPosts = proj?.facebookPosts ?? {};
         const items = await Promise.all(names.map(async (filename) => {
-          try { const st = await fsp.stat(join(dir, filename)); return { filename, path: join(dir, filename), sizeBytes: st.size, mtime: st.mtimeMs, youtube: posts[filename] ?? null }; }
+          try { const st = await fsp.stat(join(dir, filename)); return { filename, path: join(dir, filename), sizeBytes: st.size, mtime: st.mtimeMs, youtube: posts[filename] ?? null, facebook: fbPosts[filename] ?? null }; }
           catch { return null; }
         }));
         const exports = items.filter((x): x is NonNullable<typeof x> => x !== null).sort((a, b) => b.mtime - a.mtime);
@@ -734,6 +737,110 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const msg = e instanceof Error ? e.message : String(e);
           process.stderr.write(`[studio:youtube] proj=${projectId} failed: ${msg}\n`);
           sse({ type: 'yt_failed', message: msg });
+        }
+        res.end();
+        return;
+      }
+
+      // ── Facebook Reels (Page) upload ──────────────────────────────────────
+      // Loopback OAuth, same shape as YouTube. Facebook allows http on
+      // `localhost`, so the studio's own host:port works as the redirect_uri.
+      const fbRedirect = () => `http://${req.headers.host}/oauth/facebook/callback`;
+
+      if (url.pathname === '/api/facebook/status' && m === 'GET') {
+        return json(res, 200, { ...ctx.mediaConfig.getFacebookStatus(), redirectUri: fbRedirect() });
+      }
+      if (url.pathname === '/api/facebook/credentials' && m === 'POST') {
+        const { appId, appSecret } = (await readBody(req)) as { appId?: string; appSecret?: string };
+        if (!appId || !appSecret) return json(res, 400, { error: 'appId and appSecret are required' });
+        ctx.mediaConfig.setFacebookCreds(appId, appSecret);
+        return json(res, 200, { ...ctx.mediaConfig.getFacebookStatus(), redirectUri: fbRedirect() });
+      }
+      if (url.pathname === '/api/facebook/auth-url' && m === 'GET') {
+        const f = ctx.mediaConfig.getFacebook();
+        if (!f.appId) return json(res, 400, { error: 'Set the Facebook app id/secret first' });
+        return json(res, 200, { url: fbAuthUrl(f.appId, fbRedirect()) });
+      }
+      if (url.pathname === '/oauth/facebook/callback' && m === 'GET') {
+        const code = url.searchParams.get('code');
+        const oauthErr = url.searchParams.get('error_description') || url.searchParams.get('error');
+        const page = (msg: string, ok: boolean) => {
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          res.end(`<!doctype html><meta charset=utf-8><body style="font-family:system-ui;background:#0a0a0a;color:#f4f4f2;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><div style="font-size:44px">${ok ? '✅' : '⚠️'}</div><p>${msg}</p><p style="color:#9a9a96;font-size:13px">Bạn có thể đóng tab này và quay lại studio để chọn Trang.</p></div>`);
+        };
+        const f = ctx.mediaConfig.getFacebook();
+        if (oauthErr || !code) { page(`Kết nối thất bại: ${oauthErr || 'thiếu code'}`, false); return; }
+        if (!f.appId || !f.appSecret) { page('Chưa có app id/secret', false); return; }
+        try {
+          const { userToken } = await fbExchangeCode({ appId: f.appId, appSecret: f.appSecret, code, redirectUri: fbRedirect() });
+          ctx.mediaConfig.setFacebookUserToken(userToken);
+          page('Đã đăng nhập Facebook! Quay lại studio để chọn Trang.', true);
+        } catch (e) {
+          page(`Kết nối thất bại: ${e instanceof Error ? e.message : String(e)}`, false);
+        }
+        return;
+      }
+      if (url.pathname === '/api/facebook/pages' && m === 'GET') {
+        const f = ctx.mediaConfig.getFacebook();
+        if (!f.userToken) return json(res, 400, { error: 'Not connected to Facebook yet' });
+        try {
+          const pages = await fbListPages({ userToken: f.userToken, appId: f.appId, appSecret: f.appSecret });
+          return json(res, 200, { pages: pages.map((p) => ({ id: p.id, name: p.name })), selectedPageId: f.pageId ?? null });
+        } catch (e) {
+          return json(res, 502, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      if (url.pathname === '/api/facebook/select-page' && m === 'POST') {
+        const { pageId } = (await readBody(req)) as { pageId?: string };
+        const f = ctx.mediaConfig.getFacebook();
+        if (!f.userToken) return json(res, 400, { error: 'Not connected to Facebook yet' });
+        if (!pageId) return json(res, 400, { error: 'pageId is required' });
+        try {
+          const pages = await fbListPages({ userToken: f.userToken, appId: f.appId, appSecret: f.appSecret });
+          const chosen = pages.find((p) => p.id === pageId);
+          if (!chosen) return json(res, 404, { error: 'Page not found among your managed Pages' });
+          ctx.mediaConfig.setFacebookPage(chosen.id, chosen.name, chosen.accessToken);
+          return json(res, 200, { ...ctx.mediaConfig.getFacebookStatus() });
+        } catch (e) {
+          return json(res, 502, { error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      if (url.pathname === '/api/facebook/disconnect' && m === 'POST') {
+        ctx.mediaConfig.clearFacebook({ keepCreds: true });
+        return json(res, 200, { ...ctx.mediaConfig.getFacebookStatus() });
+      }
+      const fbUpMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/facebook\/upload$/);
+      if (fbUpMatch && fbUpMatch[1] && m === 'POST') {
+        const projectId = fbUpMatch[1];
+        const body = (await readBody(req)) as { filename?: string; description?: string; state?: string };
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+        const sse = (o: unknown) => { try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* client gone */ } };
+        try {
+          const f = ctx.mediaConfig.getFacebook();
+          if (!f.pageId || !f.pageToken) {
+            sse({ type: 'fb_failed', message: 'Chưa chọn Trang Facebook — vào Cài đặt → Facebook để kết nối + chọn Trang.' }); res.end(); return;
+          }
+          const filename = body.filename || '';
+          if (!/^output-[\w.-]+\.mp4$/.test(filename)) { sse({ type: 'fb_failed', message: 'Tên file không hợp lệ' }); res.end(); return; }
+          const filePath = join(await ctx.projects.ensureDir(projectId), filename);
+          if (!existsSync(filePath)) { sse({ type: 'fb_failed', message: 'Không tìm thấy file' }); res.end(); return; }
+          sse({ type: 'fb_progress', stage: 'uploading' });
+          const bytes = await readFile(filePath);
+          const state = (['PUBLISHED', 'DRAFT'].includes(String(body.state)) ? body.state : 'PUBLISHED') as 'PUBLISHED' | 'DRAFT';
+          const r = await fbUploadReel({ pageId: f.pageId, pageToken: f.pageToken, bytes, description: body.description, state });
+          try {
+            const project = await ctx.orchestrator.load(projectId);
+            project.facebookPosts = {
+              ...(project.facebookPosts ?? {}),
+              [filename]: { videoId: r.videoId, url: r.url, postedAt: new Date().toISOString() },
+            };
+            await ctx.projects.save(project);
+          } catch { /* marking is best-effort */ }
+          sse({ type: 'fb_done', videoId: r.videoId, url: r.url, state });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          process.stderr.write(`[studio:facebook] proj=${projectId} failed: ${msg}\n`);
+          sse({ type: 'fb_failed', message: msg });
         }
         res.end();
         return;

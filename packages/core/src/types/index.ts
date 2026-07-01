@@ -427,6 +427,8 @@ export interface Project {
   /** YouTube upload history, keyed by export filename — lets the studio mark
    *  which exports have already been published (and link back to the video). */
   youtubePosts?: Record<string, { videoId: string; url: string; postedAt: string }>;
+  /** Facebook Reels publish history, keyed by export filename. */
+  facebookPosts?: Record<string, { videoId: string; url: string; postedAt: string }>;
   /**
    * v0.8: path to content-graph.json for multi-frame projects.
    * Absent for single-frame fast-path projects.

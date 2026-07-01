@@ -69,6 +69,12 @@ function ytGlyph(extraClass) {
   return `<svg class="${cls}" viewBox="0 0 256 180" preserveAspectRatio="xMidYMid" aria-hidden="true"><path fill="red" d="M250.346 28.075A32.18 32.18 0 0 0 227.69 5.418C207.824 0 127.87 0 127.87 0S47.912.164 28.046 5.582A32.18 32.18 0 0 0 5.39 28.24c-6.009 35.298-8.34 89.084.165 122.97a32.18 32.18 0 0 0 22.656 22.657c19.866 5.418 99.822 5.418 99.822 5.418s79.955 0 99.82-5.418a32.18 32.18 0 0 0 22.657-22.657c6.338-35.348 8.291-89.1-.164-123.134Z"/><path fill="#FFF" d="m102.421 128.06 66.328-38.418-66.328-38.418z"/></svg>`;
 }
 
+// Official Facebook "f" logo (blue disc + white f). Same rationale as ytGlyph.
+function fbGlyph(extraClass) {
+  const cls = extraClass ? `ico-fb-logo ${extraClass}` : 'ico-fb-logo';
+  return `<svg class="${cls}" viewBox="0 0 666.667 666.667" aria-hidden="true"><defs><clipPath id="fbclip"><path d="M0 700h700V0H0Z"/></clipPath></defs><g clip-path="url(#fbclip)" transform="matrix(1.33333 0 0 -1.33333 -133.333 800)"><path d="M0 0c0 138.071-111.929 250-250 250S-500 138.071-500 0c0-117.245 80.715-215.622 189.606-242.638v166.242h-51.552V0h51.552v32.919c0 85.092 38.508 124.532 122.048 124.532 15.838 0 43.167-3.105 54.347-6.211V81.986c-5.901.621-16.149.932-28.882.932-40.993 0-56.832-15.528-56.832-55.9V0h81.659l-14.028-76.396h-67.631v-171.773C-95.927-233.218 0-127.818 0 0" style="fill:#0866ff;fill-rule:nonzero;stroke:none" transform="translate(600 350)"/><path d="m0 0 14.029 76.396H-67.63v27.019c0 40.372 15.838 55.899 56.831 55.899 12.733 0 22.981-.31 28.882-.931v69.253c-11.18 3.106-38.509 6.212-54.347 6.212-83.539 0-122.048-39.441-122.048-124.533V76.396h-51.552V0h51.552v-166.242a250.559 250.559 0 0 1 60.394-7.362c10.254 0 20.358.632 30.288 1.831V0Z" style="fill:#fff;fill-rule:nonzero;stroke:none" transform="translate(447.918 273.604)"/></g></svg>`;
+}
+
 // ─── Theme (light / dark / auto) ──────────────────────────────────────────────
 // Stored in localStorage; written to <html data-theme> ('light'|'dark') or
 // removed ('auto' → follow OS via prefers-color-scheme). An inline <head> script
@@ -1033,14 +1039,21 @@ async function renderExportsPanel() {
           <span class="export-sub">${fmtBytes(e.sizeBytes)} · ${fmtWhen(e.mtime)}</span>
         </div>
         <button class="export-btn-icon export-youtube" title="${e.youtube ? 'Đăng lại lên YouTube' : 'Đăng YouTube Short'}">${ytGlyph()}</button>
+        <button class="export-btn-icon export-facebook" title="${e.facebook ? 'Đăng lại lên Facebook' : 'Đăng Facebook Reel'}">${fbGlyph()}</button>
         <button class="export-btn-icon export-reveal" title="${esc(t('exports.reveal'))}">${icon('externalLink')}</button>
         <button class="export-btn-icon export-del" title="${esc(t('exports.delete'))}">${icon('trash')}</button>
       </div>
-      ${e.youtube ? `<a class="export-posted" href="${esc(e.youtube.url)}" target="_blank" rel="noopener" title="Mở trên YouTube">${icon('check', 'ico-lead')}Đã đăng YouTube${e.youtube.postedAt ? ` · ${fmtWhen(Date.parse(e.youtube.postedAt))}` : ''}</a>` : ''}
+      ${(e.youtube || e.facebook) ? `<div class="export-posted-row">
+        ${e.youtube ? `<a class="export-posted" href="${esc(e.youtube.url)}" target="_blank" rel="noopener" title="Mở trên YouTube">${icon('check', 'ico-lead')}Đã đăng YouTube${e.youtube.postedAt ? ` · ${fmtWhen(Date.parse(e.youtube.postedAt))}` : ''}</a>` : ''}
+        ${e.facebook ? `<a class="export-posted" href="${esc(e.facebook.url)}" target="_blank" rel="noopener" title="Mở trên Facebook">${icon('check', 'ico-lead')}Đã đăng Facebook${e.facebook.postedAt ? ` · ${fmtWhen(Date.parse(e.facebook.postedAt))}` : ''}</a>` : ''}
+      </div>` : ''}
     </div>`).join('');
 
   wrap.querySelectorAll('.export-youtube').forEach((btn) => {
     btn.onclick = () => { const f = btn.closest('.export-item')?.dataset.file; if (f) openYouTubeUpload(f); };
+  });
+  wrap.querySelectorAll('.export-facebook').forEach((btn) => {
+    btn.onclick = () => { const f = btn.closest('.export-item')?.dataset.file; if (f) openFacebookUpload(f); };
   });
   wrap.querySelectorAll('.export-reveal').forEach((btn) => {
     btn.onclick = async () => {
@@ -1674,6 +1687,8 @@ function renderChatLog() {
       const path = card?.querySelector('.export-path code')?.textContent ?? '';
       if (action === 'youtube') {
         openYouTubeUpload((path.split('/').pop() || ''));
+      } else if (action === 'facebook') {
+        openFacebookUpload((path.split('/').pop() || ''));
       } else if (action === 'open-video') {
         // Jump to the Video tab in the right pane (un-collapse it first).
         document.body.classList.remove('textfields-collapsed');
@@ -1734,6 +1749,7 @@ function renderMessage(m, idx) {
       <div class="export-path"><code>${esc(path)}</code></div>
       <div class="export-actions">
         <button class="export-btn-icon" data-export-action="youtube" title="Đăng YouTube Short">${ytGlyph()}</button>
+        <button class="export-btn-icon" data-export-action="facebook" title="Đăng Facebook Reel">${fbGlyph()}</button>
         <button class="export-btn-icon" data-export-action="open-video" title="${esc(t('export.open_video'))}">${icon('film')}</button>
         <button class="export-btn-icon" data-export-action="reveal" title="${esc(t('export.reveal'))}">${icon('folder')}</button>
         <button class="export-btn-icon" data-export-action="copy" title="${esc(t('export.copy_path'))}">${icon('copy')}</button>
@@ -3354,8 +3370,15 @@ function renderSettingsGeneral(panel) {
       <div class="section-sub">Kết nối kênh của bạn để đăng Short thẳng từ studio (dùng tài khoản riêng).</div>
       <div id="yt-connect"><div class="section-sub">Đang kiểm tra…</div></div>
     </div>
+
+    <div class="settings-section">
+      <h4>${fbGlyph('ico-lead')}Facebook Reels</h4>
+      <div class="section-sub">Kết nối 1 Trang (Page) để đăng Reels thẳng từ studio. Reels chỉ đăng được lên Trang, không lên trang cá nhân.</div>
+      <div id="fb-connect"><div class="section-sub">Đang kiểm tra…</div></div>
+    </div>
   `;
   renderYouTubeConnect(panel.querySelector('#yt-connect'));
+  renderFacebookConnect(panel.querySelector('#fb-connect'));
   panel.querySelectorAll('[data-theme-opt]').forEach((btn) => {
     btn.onclick = () => { setTheme(btn.dataset.themeOpt); renderSettingsGeneral(panel); };
   });
@@ -3476,6 +3499,148 @@ async function openYouTubeUpload(filename) {
           if (ev.type === 'yt_progress') statusEl.textContent = ev.stage === 'auth' ? 'Xác thực…' : 'Đang tải lên…';
           else if (ev.type === 'yt_done') { statusEl.innerHTML = `${iconL('check')}Đã đăng! <a href="${esc(ev.url)}" target="_blank" rel="noopener">Mở video</a>`; toast('Đã đăng YouTube Short ✓', 'success'); goBtn.textContent = 'Đã đăng'; if (state.rightTab === 'exports') renderExportsPanel(); }
           else if (ev.type === 'yt_failed') { statusEl.textContent = 'Lỗi: ' + ev.message; toast('Đăng thất bại: ' + ev.message, 'error'); goBtn.disabled = false; }
+        }
+      }
+    } catch (e) { statusEl.textContent = 'Lỗi: ' + (e?.message ?? e); goBtn.disabled = false; }
+  };
+}
+
+// ── Facebook connect (Settings → General) ─────────────────────────────────
+async function renderFacebookConnect(el) {
+  if (!el) return;
+  let st;
+  try { st = await (await fetch('/api/facebook/status')).json(); }
+  catch { el.innerHTML = '<div class="section-sub">Không tải được trạng thái Facebook.</div>'; return; }
+  if (st.pageSelected) {
+    el.innerHTML = `<div class="yt-row"><span class="yt-ok">${iconL('check')}Đã kết nối Trang: <b>${esc(st.pageName || '')}</b></span>
+      <button class="yt-btn" id="fb-disc">Ngắt kết nối</button></div>`;
+    el.querySelector('#fb-disc').onclick = async () => { await fetch('/api/facebook/disconnect', { method: 'POST' }); renderFacebookConnect(el); };
+    return;
+  }
+  if (st.connected) {
+    // Logged in but no Page chosen yet — list the user's Pages to pick one.
+    el.innerHTML = `<div class="yt-note">Đã đăng nhập. Chọn Trang để đăng Reels:</div><div id="fb-pages" class="yt-row"><span class="section-sub">Đang tải danh sách Trang…</span></div>`;
+    const box = el.querySelector('#fb-pages');
+    try {
+      const r = await (await fetch('/api/facebook/pages')).json();
+      const pages = r.pages || [];
+      if (!pages.length) {
+        box.innerHTML = `<span class="section-sub">Không thấy Trang nào bạn quản lý — hãy tạo 1 Facebook Page rồi thử lại.</span> <button class="yt-btn" id="fb-recheck">Kiểm tra lại</button> <button class="yt-btn" id="fb-disc2">Đăng xuất</button>`;
+      } else {
+        box.innerHTML = `<select class="yt-input" id="fb-page-sel" style="max-width:260px;margin:0">${pages.map((p) => `<option value="${esc(p.id)}"${p.id === r.selectedPageId ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+          <button class="yt-btn yt-primary" id="fb-page-save">Chọn Trang</button>
+          <button class="yt-btn" id="fb-disc2">Đăng xuất</button>`;
+        box.querySelector('#fb-page-save').onclick = async () => {
+          const pageId = box.querySelector('#fb-page-sel').value;
+          try {
+            const res = await fetch('/api/facebook/select-page', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pageId }) });
+            if (!res.ok) throw new Error((await res.json()).error || res.status);
+            renderFacebookConnect(el);
+          } catch (e) { toast('Lỗi chọn Trang: ' + (e?.message ?? e), 'error'); }
+        };
+      }
+      box.querySelector('#fb-recheck')?.addEventListener('click', () => renderFacebookConnect(el));
+      box.querySelector('#fb-disc2')?.addEventListener('click', async () => { await fetch('/api/facebook/disconnect', { method: 'POST' }); renderFacebookConnect(el); });
+    } catch (e) {
+      box.innerHTML = `<span class="section-sub">Lỗi tải Trang: ${esc(e?.message ?? e)}</span> <button class="yt-btn" id="fb-recheck2">Thử lại</button>`;
+      box.querySelector('#fb-recheck2').onclick = () => renderFacebookConnect(el);
+    }
+    return;
+  }
+  if (st.hasCreds) {
+    el.innerHTML = `
+      <div class="yt-note">Thêm URI này vào <b>Valid OAuth Redirect URIs</b> (App → Facebook Login → Settings). Dùng <b>localhost</b> để mở studio khi kết nối:
+        <code class="yt-uri">${esc(st.redirectUri || '')}</code></div>
+      <div class="yt-row">
+        <button class="yt-btn yt-primary" id="fb-conn">${iconL('externalLink')}Kết nối</button>
+        <button class="yt-btn" id="fb-recheck">Đã cho phép — kiểm tra</button>
+        <button class="yt-btn" id="fb-edit">Sửa khóa</button>
+      </div>`;
+    el.querySelector('#fb-conn').onclick = async () => {
+      try { const r = await (await fetch('/api/facebook/auth-url')).json(); if (r.url) window.open(r.url, '_blank', 'width=560,height=720'); else throw new Error(r.error || 'no url'); }
+      catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+    };
+    el.querySelector('#fb-recheck').onclick = () => renderFacebookConnect(el);
+    el.querySelector('#fb-edit').onclick = () => renderFacebookCreds(el);
+    return;
+  }
+  renderFacebookCreds(el);
+}
+function renderFacebookCreds(el) {
+  el.innerHTML = `
+    <div class="yt-note">Dán <b>App ID</b> & <b>App Secret</b> (Meta for Developers → App → Settings → Basic).</div>
+    <input class="yt-input" id="fb-aid" placeholder="App ID" autocomplete="off" />
+    <input class="yt-input" id="fb-asec" placeholder="App Secret" type="password" autocomplete="off" />
+    <div class="yt-row"><button class="yt-btn yt-primary" id="fb-save">Lưu khóa</button></div>`;
+  el.querySelector('#fb-save').onclick = async () => {
+    const appId = el.querySelector('#fb-aid').value.trim();
+    const appSecret = el.querySelector('#fb-asec').value.trim();
+    if (!appId || !appSecret) { toast('Nhập đủ App ID + Secret', 'error'); return; }
+    try {
+      const r = await fetch('/api/facebook/credentials', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ appId, appSecret }) });
+      if (!r.ok) throw new Error((await r.json()).error || r.status);
+      renderFacebookConnect(el);
+    } catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+  };
+}
+
+// ── Publish an exported MP4 to Facebook Reels ─────────────────────────────
+async function openFacebookUpload(filename) {
+  let st; try { st = await (await fetch('/api/facebook/status')).json(); } catch { st = {}; }
+  if (!st.pageSelected) { toast('Chưa kết nối Facebook — vào Cài đặt → Facebook.', 'error'); openSettingsModal('general'); return; }
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg show';
+  ov.innerHTML = `<div class="modal yt-modal">
+    <div class="settings-head"><h2>${fbGlyph('ico-lead')}Đăng Facebook Reel</h2>
+      <button class="modal-close" id="fbm-x" aria-label="Close">${icon('x')}</button></div>
+    <div class="yt-modal-body">
+      <label class="yt-flabel">Trang</label>
+      <div class="yt-note" style="margin:0 0 6px">Đăng lên: <b>${esc(st.pageName || '')}</b></div>
+      <label class="yt-flabel">Mô tả</label>
+      <textarea class="yt-input" id="fbm-desc" rows="3" placeholder="Mô tả Reel…"></textarea>
+      <label class="yt-flabel">Trạng thái</label>
+      <select class="yt-input" id="fbm-state">
+        <option value="DRAFT">Nháp (draft — chỉ lưu, chưa công khai)</option>
+        <option value="PUBLISHED">Đăng công khai (published)</option>
+      </select>
+      <div class="yt-modal-actions">
+        <span class="yt-status" id="fbm-status"></span>
+        <button class="yt-btn yt-primary" id="fbm-go">${fbGlyph('ico-lead')}Đăng Reel</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('#fbm-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const statusEl = ov.querySelector('#fbm-status');
+  const goBtn = ov.querySelector('#fbm-go');
+  goBtn.onclick = async () => {
+    goBtn.disabled = true;
+    statusEl.textContent = 'Đang tải lên…';
+    const payload = { filename, description: ov.querySelector('#fbm-desc').value, state: ov.querySelector('#fbm-state').value };
+    try {
+      const res = await fetch(`/api/projects/${state.selected.id}/facebook/upload`, {
+        method: 'POST', headers: { accept: 'text/event-stream', 'content-type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n'); buf = parts.pop() ?? '';
+        for (const line of parts) {
+          if (!line.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.type === 'fb_progress') statusEl.textContent = 'Đang tải lên…';
+          else if (ev.type === 'fb_done') {
+            statusEl.innerHTML = ev.state === 'DRAFT'
+              ? `${iconL('check')}Đã lưu nháp! Mở Meta Business Suite để xem/đăng.`
+              : `${iconL('check')}Đã đăng! <a href="${esc(ev.url)}" target="_blank" rel="noopener">Mở Reel</a>`;
+            toast('Đã đăng Facebook Reel ✓', 'success'); goBtn.textContent = 'Đã đăng';
+            if (state.rightTab === 'exports') renderExportsPanel();
+          }
+          else if (ev.type === 'fb_failed') { statusEl.textContent = 'Lỗi: ' + ev.message; toast('Đăng thất bại: ' + ev.message, 'error'); goBtn.disabled = false; }
         }
       }
     } catch (e) { statusEl.textContent = 'Lỗi: ' + (e?.message ?? e); goBtn.disabled = false; }

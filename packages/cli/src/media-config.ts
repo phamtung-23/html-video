@@ -14,6 +14,14 @@ import { resolveEdgeTtsCommand, EDGE_TTS_DEFAULT_VOICE } from '@html-video/core'
 interface MediaConfig {
   tts?: { edgeVoice?: string };
   youtube?: { clientId?: string; clientSecret?: string; refreshToken?: string };
+  facebook?: {
+    appId?: string;
+    appSecret?: string;
+    userToken?: string;
+    pageId?: string;
+    pageName?: string;
+    pageToken?: string;
+  };
 }
 
 export class MediaConfigStore {
@@ -113,5 +121,73 @@ export class MediaConfigStore {
   getYouTubeStatus(): { hasCreds: boolean; connected: boolean } {
     const y = this.getYouTube();
     return { hasCreds: !!(y.clientId && y.clientSecret), connected: !!y.refreshToken };
+  }
+
+  // ── Facebook Reels (Page) OAuth ───────────────────────────────────────────
+  /** Raw stored Facebook config (app id/secret + user token + selected Page). */
+  getFacebook(): {
+    appId?: string;
+    appSecret?: string;
+    userToken?: string;
+    pageId?: string;
+    pageName?: string;
+    pageToken?: string;
+  } {
+    return this.read().facebook ?? {};
+  }
+
+  /** Save the user's Facebook App id + secret (from their Meta app). */
+  setFacebookCreds(appId: string, appSecret: string): void {
+    const cfg = this.read();
+    cfg.facebook = {
+      ...(cfg.facebook ?? {}),
+      appId: (appId ?? '').trim(),
+      appSecret: (appSecret ?? '').trim(),
+    };
+    this.write(cfg);
+  }
+
+  /** Save the long-lived user token from the consent flow (Page not yet chosen). */
+  setFacebookUserToken(userToken: string): void {
+    const cfg = this.read();
+    cfg.facebook = { ...(cfg.facebook ?? {}), userToken: (userToken ?? '').trim() };
+    this.write(cfg);
+  }
+
+  /** Persist the chosen Page (id + name + its own long-lived Page token). */
+  setFacebookPage(pageId: string, pageName: string, pageToken: string): void {
+    const cfg = this.read();
+    cfg.facebook = {
+      ...(cfg.facebook ?? {}),
+      pageId: (pageId ?? '').trim(),
+      pageName: (pageName ?? '').trim(),
+      pageToken: (pageToken ?? '').trim(),
+    };
+    this.write(cfg);
+  }
+
+  /** Forget the connection (keeps app creds; drops tokens + Page) or everything. */
+  clearFacebook(opts?: { keepCreds?: boolean }): void {
+    const cfg = this.read();
+    if (opts?.keepCreds && cfg.facebook) {
+      delete cfg.facebook.userToken;
+      delete cfg.facebook.pageId;
+      delete cfg.facebook.pageName;
+      delete cfg.facebook.pageToken;
+    } else {
+      delete cfg.facebook;
+    }
+    this.write(cfg);
+  }
+
+  /** Status for the Settings UI: creds set? logged in? Page chosen? */
+  getFacebookStatus(): { hasCreds: boolean; connected: boolean; pageSelected: boolean; pageName: string } {
+    const f = this.getFacebook();
+    return {
+      hasCreds: !!(f.appId && f.appSecret),
+      connected: !!f.userToken,
+      pageSelected: !!f.pageToken,
+      pageName: f.pageName ?? '',
+    };
   }
 }
