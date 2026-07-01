@@ -1111,6 +1111,13 @@
   .yt-btn.yt-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
     font-weight: 500; }
   .yt-btn.yt-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  /* "AI write viral copy" button inside the upload modals. */
+  .yt-btn.yt-ai { width: 100%; justify-content: center; margin-bottom: 14px;
+    color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+    border-style: dashed; font-weight: 500; }
+  .yt-btn.yt-ai:hover { background: var(--accent); color: var(--accent-fg); border-style: solid; }
+  .yt-btn.yt-ai:hover .ico-svg { color: var(--accent-fg); }
+  .yt-btn.yt-ai:disabled { opacity: .6; cursor: default; }
   .yt-ok { display: inline-flex; align-items: center; color: var(--accent); font-weight: 500; font-size: 13px; }
   /* upload modal — shares .settings-head; flush header + padded body */
   .modal.yt-modal { width: min(460px, 92vw); max-width: 460px; padding: 0; gap: 0; }
@@ -1409,6 +1416,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.9-facebook"></script>
+<script type="module" src="/app.js?v=0.9-social-ai"></script>
 </body>
 </html>

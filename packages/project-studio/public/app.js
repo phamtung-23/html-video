@@ -3441,6 +3441,29 @@ function renderYouTubeCreds(el) {
   };
 }
 
+// AI-write a viral title + description for a social upload, fill the fields.
+async function draftSocialCopy(platform, titleEl, descEl, btn) {
+  if (!state.selected) return;
+  const agentId = state.selected.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'AI đang viết…';
+  try {
+    const r = await fetch(`/api/projects/${state.selected.id}/draft-social`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ agentId, platform }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    if (d.title && titleEl) titleEl.value = d.title;
+    if (d.description && descEl) descEl.value = d.description;
+    toast('AI đã viết tiêu đề & mô tả ✓', 'success');
+  } catch (e) {
+    toast('AI viết thất bại: ' + (e?.message ?? e), 'error');
+  } finally {
+    btn.innerHTML = orig; btn.disabled = false;
+  }
+}
+
 // ── Publish an exported MP4 to YouTube Shorts ─────────────────────────────
 async function openYouTubeUpload(filename) {
   let st; try { st = await (await fetch('/api/youtube/status')).json(); } catch { st = {}; }
@@ -3452,6 +3475,7 @@ async function openYouTubeUpload(filename) {
     <div class="settings-head"><h2>${ytGlyph('ico-lead')}Đăng YouTube Short</h2>
       <button class="modal-close" id="ytm-x" aria-label="Close">${icon('x')}</button></div>
     <div class="yt-modal-body">
+      <button class="yt-btn yt-ai" id="ytm-ai">${iconL('sparkles')}AI viết tiêu đề &amp; mô tả viral</button>
       <label class="yt-flabel">Tiêu đề</label>
       <input class="yt-input" id="ytm-title" value="${esc(defTitle)}" maxlength="100" />
       <label class="yt-flabel">Mô tả</label>
@@ -3472,6 +3496,7 @@ async function openYouTubeUpload(filename) {
   const close = () => ov.remove();
   ov.querySelector('#ytm-x').onclick = close;
   ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  ov.querySelector('#ytm-ai').onclick = (e) => draftSocialCopy('youtube', ov.querySelector('#ytm-title'), ov.querySelector('#ytm-desc'), e.currentTarget);
   const statusEl = ov.querySelector('#ytm-status');
   const goBtn = ov.querySelector('#ytm-go');
   goBtn.onclick = async () => {
@@ -3594,6 +3619,7 @@ async function openFacebookUpload(filename) {
     <div class="settings-head"><h2>${fbGlyph('ico-lead')}Đăng Facebook Reel</h2>
       <button class="modal-close" id="fbm-x" aria-label="Close">${icon('x')}</button></div>
     <div class="yt-modal-body">
+      <button class="yt-btn yt-ai" id="fbm-ai">${iconL('sparkles')}AI viết mô tả viral</button>
       <label class="yt-flabel">Trang</label>
       <div class="yt-note" style="margin:0 0 6px">Đăng lên: <b>${esc(st.pageName || '')}</b></div>
       <label class="yt-flabel">Mô tả</label>
@@ -3613,6 +3639,7 @@ async function openFacebookUpload(filename) {
   const close = () => ov.remove();
   ov.querySelector('#fbm-x').onclick = close;
   ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  ov.querySelector('#fbm-ai').onclick = (e) => draftSocialCopy('facebook', null, ov.querySelector('#fbm-desc'), e.currentTarget);
   const statusEl = ov.querySelector('#fbm-status');
   const goBtn = ov.querySelector('#fbm-go');
   goBtn.onclick = async () => {

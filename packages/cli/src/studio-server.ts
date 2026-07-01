@@ -540,15 +540,18 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             const target = allFrames.find((f) => f.id === body.frameId);
             if (!target) return json(res, 400, { error: `frame "${body.frameId}" not in content-graph` });
             const prompt = [
-              `This is a ${allFrames.length}-frame video. Write the spoken NARRATION for FRAME ${target.idx + 1} ONLY.`,
+              `You are a top short-form video (Reels / Shorts / TikTok) scriptwriter. This is a ${allFrames.length}-frame video. Write the spoken NARRATION for FRAME ${target.idx + 1} ONLY.`,
               ``,
               `All frames (for context):`,
               frameLines,
               ``,
               graph.synopsis ? `Synopsis: ${graph.synopsis}` : '',
               ``,
-              `Write ONE short spoken sentence narrating frame ${target.idx + 1} ("${target.text}") specifically — distinct, not generic.`,
-              `Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.`,
+              `Write ONE punchy, attention-grabbing spoken sentence for frame ${target.idx + 1} ("${target.text}") specifically.`,
+              `Give it a clear emphasis — a hook, a bold claim, a stake, a sharp contrast, or a curiosity gap. Never a flat restatement of the on-screen text.`,
+              target.idx === 0 ? `This is the OPENING frame: make it a scroll-stopping hook that grabs attention in the first 3 seconds.` : ``,
+              target.idx === allFrames.length - 1 ? `This is the FINAL frame: land a memorable payoff or takeaway.` : ``,
+              `Conversational, high-energy, spoken rhythm — short and easy to say out loud. Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.`,
             ].filter((l) => l !== undefined).join('\n');
             const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
             const line = raw.split('\n').map((l) => l.replace(/^\s*(?:\d+[.)、]|[-*•])\s*/, '').trim()).find((l) => l.length > 0) ?? raw;
@@ -556,17 +559,22 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           } else {
             // ---- global: one line per frame, in order ----
             const prompt = [
-              `Write a spoken NARRATION script for this ${allFrames.length}-frame video — ONE line per frame, IN FRAME ORDER.`,
+              `You are a top short-form video (Reels / Shorts / TikTok) scriptwriter. Write a spoken NARRATION script for this ${allFrames.length}-frame video — ONE line per frame, IN FRAME ORDER.`,
               ``,
               `Frames (in order):`,
               frameLines,
               ``,
               graph.synopsis ? `Synopsis: ${graph.synopsis}` : '',
               ``,
+              `Goal: a punchy, attention-grabbing voiceover that hooks in the first 3 seconds and keeps viewers watching to the very end.`,
+              ``,
               `Rules:`,
               `- Output EXACTLY ${allFrames.length} lines, one per frame, in the SAME order. Line 1 narrates frame 1, etc.`,
-              `- Each line is ONE short spoken sentence about THAT specific frame's content — distinct per frame, not a generic restatement.`,
-              `- The lines should still flow as a continuous voiceover read top to bottom.`,
+              `- Line 1 must be a SCROLL-STOPPING HOOK — a provocative question, bold claim, surprising fact, or a real stake. No slow warm-up.`,
+              `- Every line carries a clear emphasis (a contrast, tension, a concrete number, or a curiosity gap) and makes the viewer crave the next line — never a flat restatement of the on-screen text.`,
+              `- The LAST line lands a memorable payoff or takeaway; a light call-to-action is welcome.`,
+              `- Conversational, high-energy, spoken rhythm — short, punchy sentences that are easy to say out loud in one breath.`,
+              `- The lines should still flow as ONE continuous voiceover read top to bottom.`,
               `- Same language as the frame text. Plain text only: one sentence per line, no numbering, bullets, blank lines, or markdown.`,
             ].filter((l) => l !== undefined).join('\n');
             const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
@@ -579,6 +587,70 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           process.stderr.write(`[studio:draft-narration] proj=${projectId} failed: ${msg}\n`);
+          return json(res, 500, { error: msg });
+        }
+      }
+
+      // AI-write a viral TITLE + DESCRIPTION for a social upload (YouTube Short /
+      // Facebook Reel), optimized for clicks + reach, from the video's frames.
+      const draftSocialMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/draft-social$/);
+      if (draftSocialMatch && draftSocialMatch[1] && m === 'POST') {
+        const projectId = draftSocialMatch[1];
+        try {
+          const body = (await readBody(req)) as { agentId?: string; platform?: string };
+          const platform = body.platform === 'facebook' ? 'Facebook Reels' : 'YouTube Shorts';
+          const tagHint = platform === 'YouTube Shorts'
+            ? 'include #Shorts plus topic hashtags'
+            : 'use topic + trending hashtags (no #Shorts)';
+          const graph = await ctx.orchestrator.readContentGraph(projectId);
+          if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+            return json(res, 400, { error: 'No frames yet — generate the video first.' });
+          }
+          if (!body.agentId) return json(res, 400, { error: 'No agent selected.' });
+          const agentDef = findAgent(body.agentId);
+          if (!agentDef) return json(res, 400, { error: `agent "${body.agentId}" not registered` });
+          const projectDir = await ctx.projects.ensureDir(projectId);
+          const nodeText = (n: typeof graph.nodes[number]): string =>
+            (n.kind === 'text' ? n.text : undefined) ?? n.label ?? n.id;
+          const frameLines = graph.nodes
+            .map((n, i) => `${i + 1}. ${nodeText(n).replace(/\n/g, ' ').slice(0, 240)}`)
+            .join('\n');
+          const prompt = [
+            `You are a viral short-form video growth expert. Write a ${platform} TITLE and DESCRIPTION for this video, optimized to maximize clicks, watch-time and reach so it can trend.`,
+            ``,
+            `Video frames (in order):`,
+            frameLines,
+            ``,
+            graph.synopsis ? `Synopsis: ${graph.synopsis}` : '',
+            ``,
+            `Requirements:`,
+            `- TITLE: ONE line, scroll-stopping and curiosity-driven, front-load the hook, ≤ 80 characters. No clickbait lies, no surrounding quotes.`,
+            `- DESCRIPTION: 1-3 short punchy lines that hook and add value, then a final line of 5-10 relevant high-traffic hashtags (${tagHint}).`,
+            `- Same language as the video content.`,
+            `- Plain text only, no markdown, no emojis in the title.`,
+            ``,
+            `Return EXACTLY in this format and nothing else:`,
+            `TITLE: <the title>`,
+            `---`,
+            `<the description with hashtags on the last line>`,
+          ].filter((l) => l !== undefined).join('\n');
+          const raw = (await callAgentSimple(agentDef, prompt, projectDir)).trim();
+          let title = '';
+          let description = '';
+          const sep = raw.indexOf('---');
+          if (sep >= 0) {
+            title = (raw.slice(0, sep).replace(/^\s*TITLE:\s*/i, '').trim().split('\n')[0] ?? '').trim();
+            description = raw.slice(sep + 3).trim();
+          } else {
+            const ls = raw.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+            title = (ls[0] ?? '').replace(/^\s*TITLE:\s*/i, '').trim();
+            description = ls.slice(1).join('\n').trim();
+          }
+          title = title.replace(/^["'“”]+|["'“”]+$/g, '').slice(0, 100);
+          return json(res, 200, { title, description });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`[studio:draft-social] proj=${projectId} failed: ${msg}\n`);
           return json(res, 500, { error: msg });
         }
       }
