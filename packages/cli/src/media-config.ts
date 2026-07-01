@@ -11,9 +11,22 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveEdgeTtsCommand, EDGE_TTS_DEFAULT_VOICE } from '@html-video/core';
 
+interface YouTubeAccount {
+  id: string;
+  label: string;
+  refreshToken: string;
+}
+
 interface MediaConfig {
   tts?: { edgeVoice?: string };
-  youtube?: { clientId?: string; clientSecret?: string; refreshToken?: string };
+  youtube?: {
+    clientId?: string;
+    clientSecret?: string;
+    /** Legacy single-account token — migrated into `accounts` on read. */
+    refreshToken?: string;
+    /** Multiple connected channels; upload picks one by id. */
+    accounts?: YouTubeAccount[];
+  };
   facebook?: {
     appId?: string;
     appSecret?: string;
@@ -82,45 +95,75 @@ export class MediaConfigStore {
     return { edgeAvailable: this.edgeAvailable(), edgeVoice: this.getEdgeVoice() };
   }
 
-  // ── YouTube (personal channel) OAuth ──────────────────────────────────────
-  /** Raw stored YouTube config (client id/secret + refresh token). */
-  getYouTube(): { clientId?: string; clientSecret?: string; refreshToken?: string } {
-    return this.read().youtube ?? {};
+  // ── YouTube (personal channels) OAuth — supports multiple accounts ─────────
+  /** Stored YouTube config with a legacy single `refreshToken` migrated into
+   *  the `accounts` array (non-persisted migration; add/remove persist it). */
+  getYouTube(): { clientId?: string; clientSecret?: string; accounts: YouTubeAccount[] } {
+    const y = this.read().youtube ?? {};
+    let accounts = y.accounts ?? [];
+    if ((!accounts || accounts.length === 0) && y.refreshToken) {
+      accounts = [{ id: 'default', label: 'Kênh của bạn', refreshToken: y.refreshToken }];
+    }
+    return { clientId: y.clientId, clientSecret: y.clientSecret, accounts };
   }
 
   /** Save the user's OAuth client id + secret (from their Google Cloud project). */
   setYouTubeCreds(clientId: string, clientSecret: string): void {
+    const y = this.getYouTube();
     const cfg = this.read();
     cfg.youtube = {
-      ...(cfg.youtube ?? {}),
       clientId: (clientId ?? '').trim(),
       clientSecret: (clientSecret ?? '').trim(),
+      accounts: y.accounts,
     };
     this.write(cfg);
   }
 
-  /** Save the long-lived refresh token obtained after the consent flow. */
-  setYouTubeToken(refreshToken: string): void {
+  /** Add (or update, by channel id) a connected YouTube account. */
+  addYouTubeAccount(acc: YouTubeAccount): void {
+    const y = this.getYouTube();
+    const accounts = y.accounts.filter((a) => a.id !== acc.id);
+    accounts.push({ id: acc.id, label: acc.label, refreshToken: acc.refreshToken });
     const cfg = this.read();
-    cfg.youtube = { ...(cfg.youtube ?? {}), refreshToken: (refreshToken ?? '').trim() };
+    cfg.youtube = { clientId: y.clientId, clientSecret: y.clientSecret, accounts };
     this.write(cfg);
   }
 
-  /** Forget the connection (keeps creds; drops the token) or everything. */
+  /** Look up one account's full record (incl. refresh token) by id. */
+  getYouTubeAccount(id?: string): YouTubeAccount | undefined {
+    const accounts = this.getYouTube().accounts;
+    if (!id) return accounts[0];
+    return accounts.find((a) => a.id === id);
+  }
+
+  /** Remove one account by id (keeps creds + other accounts). */
+  removeYouTubeAccount(id: string): void {
+    const y = this.getYouTube();
+    const cfg = this.read();
+    cfg.youtube = {
+      clientId: y.clientId,
+      clientSecret: y.clientSecret,
+      accounts: y.accounts.filter((a) => a.id !== id),
+    };
+    this.write(cfg);
+  }
+
+  /** Forget all connections (keeps creds) or everything. */
   clearYouTube(opts?: { keepCreds?: boolean }): void {
     const cfg = this.read();
     if (opts?.keepCreds && cfg.youtube) {
-      delete cfg.youtube.refreshToken;
+      cfg.youtube = { clientId: cfg.youtube.clientId, clientSecret: cfg.youtube.clientSecret, accounts: [] };
     } else {
       delete cfg.youtube;
     }
     this.write(cfg);
   }
 
-  /** Status for the Settings UI: are creds set, and are we connected? */
-  getYouTubeStatus(): { hasCreds: boolean; connected: boolean } {
+  /** Status for the Settings UI: creds set + the list of connected channels. */
+  getYouTubeStatus(): { hasCreds: boolean; connected: boolean; accounts: Array<{ id: string; label: string }> } {
     const y = this.getYouTube();
-    return { hasCreds: !!(y.clientId && y.clientSecret), connected: !!y.refreshToken };
+    const accounts = y.accounts.map((a) => ({ id: a.id, label: a.label }));
+    return { hasCreds: !!(y.clientId && y.clientSecret), connected: accounts.length > 0, accounts };
   }
 
   // ── Facebook Reels (Page) OAuth ───────────────────────────────────────────

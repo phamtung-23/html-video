@@ -14,7 +14,9 @@ const OAUTH_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const OAUTH_TOKEN = 'https://oauth2.googleapis.com/token';
 const UPLOAD_URL =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
-export const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
+// upload = publish videos; readonly = read the channel name to label the account.
+export const YOUTUBE_SCOPE =
+  'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly';
 
 /** Build the consent URL the user opens to authorize the studio. */
 export function buildAuthUrl(clientId: string, redirectUri: string): string {
@@ -24,7 +26,9 @@ export function buildAuthUrl(clientId: string, redirectUri: string): string {
     response_type: 'code',
     scope: YOUTUBE_SCOPE,
     access_type: 'offline',
-    prompt: 'consent', // force a refresh_token every time
+    // select_account: let the user pick WHICH Google account (for multi-account);
+    // consent: force a refresh_token every time.
+    prompt: 'select_account consent',
     include_granted_scopes: 'true',
   });
   return `${OAUTH_AUTH}?${p.toString()}`;
@@ -76,6 +80,22 @@ export async function getAccessToken(args: {
     throw new Error(data.error_description || data.error || 'Could not refresh access token');
   }
   return data.access_token;
+}
+
+/** Best-effort channel id + title for the signed-in account (to label it in the
+ *  UI). Works with the upload scope on most accounts; returns a fallback on any
+ *  error so connecting never breaks over a missing label. */
+export async function getChannelInfo(accessToken: string): Promise<{ id: string; title: string }> {
+  try {
+    const res = await fetch(
+      'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',
+      { headers: { authorization: `Bearer ${accessToken}` } },
+    );
+    const data = (await res.json()) as { items?: Array<{ id?: string; snippet?: { title?: string } }> };
+    const ch = data.items?.[0];
+    if (ch?.id) return { id: ch.id, title: ch.snippet?.title || 'Kênh YouTube' };
+  } catch { /* fall through */ }
+  return { id: '', title: '' };
 }
 
 /**

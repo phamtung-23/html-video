@@ -3408,30 +3408,33 @@ async function renderYouTubeConnect(el) {
   let st;
   try { st = await (await fetch('/api/youtube/status')).json(); }
   catch { el.innerHTML = '<div class="section-sub">Không tải được trạng thái YouTube.</div>'; return; }
-  if (st.connected) {
-    el.innerHTML = `<div class="yt-row"><span class="yt-ok">${iconL('check')}Đã kết nối kênh</span>
-      <button class="yt-btn" id="yt-disc">Ngắt kết nối</button></div>`;
-    el.querySelector('#yt-disc').onclick = async () => { await fetch('/api/youtube/disconnect', { method: 'POST' }); renderYouTubeConnect(el); };
-    return;
-  }
-  if (st.hasCreds) {
-    el.innerHTML = `
-      <div class="yt-note">Thêm URI này vào <b>Authorized redirect URIs</b> của OAuth client (Google Cloud):
-        <code class="yt-uri">${esc(st.redirectUri || '')}</code></div>
-      <div class="yt-row">
-        <button class="yt-btn yt-primary" id="yt-conn">${iconL('externalLink')}Kết nối</button>
-        <button class="yt-btn" id="yt-recheck">Đã cho phép — kiểm tra</button>
-        <button class="yt-btn" id="yt-edit">Sửa khóa</button>
-      </div>`;
-    el.querySelector('#yt-conn').onclick = async () => {
-      try { const r = await (await fetch('/api/youtube/auth-url')).json(); if (r.url) window.open(r.url, '_blank', 'width=520,height=700'); else throw new Error(r.error || 'no url'); }
-      catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+  if (!st.hasCreds) { renderYouTubeCreds(el); return; }
+  const accounts = st.accounts || [];
+  const accountsHtml = accounts.length
+    ? `<div class="acct-list">${accounts.map((a) => `
+        <div class="acct-row"><span class="yt-ok">${iconL('check')}${esc(a.label)}</span>
+          <button class="yt-btn acct-disc" data-acct="${esc(a.id)}">Ngắt</button></div>`).join('')}</div>`
+    : '';
+  el.innerHTML = `
+    ${accountsHtml}
+    <div class="yt-note">Thêm URI này vào <b>Authorized redirect URIs</b> (Google Cloud): <code class="yt-uri">${esc(st.redirectUri || '')}</code>${accounts.length ? ' — muốn thêm kênh khác thì chọn tài khoản Google khác ở màn hình cho phép.' : ''}</div>
+    <div class="yt-row">
+      <button class="yt-btn yt-primary" id="yt-conn">${iconL('externalLink')}${accounts.length ? 'Kết nối thêm tài khoản' : 'Kết nối'}</button>
+      <button class="yt-btn" id="yt-recheck">Đã cho phép — kiểm tra</button>
+      <button class="yt-btn" id="yt-edit">Sửa khóa</button>
+    </div>`;
+  el.querySelector('#yt-conn').onclick = async () => {
+    try { const r = await (await fetch('/api/youtube/auth-url')).json(); if (r.url) window.open(r.url, '_blank', 'width=520,height=700'); else throw new Error(r.error || 'no url'); }
+    catch (e) { toast('Lỗi: ' + (e?.message ?? e), 'error'); }
+  };
+  el.querySelector('#yt-recheck').onclick = () => renderYouTubeConnect(el);
+  el.querySelector('#yt-edit').onclick = () => renderYouTubeCreds(el);
+  el.querySelectorAll('.acct-disc').forEach((btn) => {
+    btn.onclick = async () => {
+      await fetch('/api/youtube/disconnect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountId: btn.dataset.acct }) });
+      renderYouTubeConnect(el);
     };
-    el.querySelector('#yt-recheck').onclick = () => renderYouTubeConnect(el);
-    el.querySelector('#yt-edit').onclick = () => renderYouTubeCreds(el);
-    return;
-  }
-  renderYouTubeCreds(el);
+  });
 }
 function renderYouTubeCreds(el) {
   el.innerHTML = `
@@ -3477,8 +3480,14 @@ async function draftSocialCopy(platform, titleEl, descEl, btn) {
 // ── Publish an exported MP4 to YouTube Shorts ─────────────────────────────
 async function openYouTubeUpload(filename) {
   let st; try { st = await (await fetch('/api/youtube/status')).json(); } catch { st = {}; }
-  if (!st.connected) { toast('Chưa kết nối YouTube — vào Cài đặt → YouTube.', 'error'); openSettingsModal('general'); return; }
+  const accounts = st.accounts || [];
+  if (!accounts.length) { toast('Chưa kết nối YouTube — vào Cài đặt → YouTube.', 'error'); openSettingsModal('general'); return; }
   const defTitle = (state.selected?.name || filename.replace(/\.mp4$/, '')).slice(0, 90);
+  // Show a channel picker only when there's more than one connected account.
+  const acctPicker = accounts.length > 1
+    ? `<label class="yt-flabel">Kênh</label>
+       <select class="yt-input" id="ytm-account">${accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join('')}</select>`
+    : `<input type="hidden" id="ytm-account" value="${esc(accounts[0].id)}" />`;
   const ov = document.createElement('div');
   ov.className = 'modal-bg show';
   ov.innerHTML = `<div class="modal yt-modal">
@@ -3486,6 +3495,7 @@ async function openYouTubeUpload(filename) {
       <button class="modal-close" id="ytm-x" aria-label="Close">${icon('x')}</button></div>
     <div class="yt-modal-body">
       <button class="yt-btn yt-ai" id="ytm-ai">${iconL('sparkles')}AI viết tiêu đề &amp; mô tả viral</button>
+      ${acctPicker}
       <label class="yt-flabel">Tiêu đề</label>
       <input class="yt-input" id="ytm-title" value="${esc(defTitle)}" maxlength="100" />
       <label class="yt-flabel">Mô tả</label>
@@ -3517,6 +3527,7 @@ async function openYouTubeUpload(filename) {
       title: ov.querySelector('#ytm-title').value.trim() || defTitle,
       description: ov.querySelector('#ytm-desc').value,
       privacy: ov.querySelector('#ytm-priv').value,
+      accountId: ov.querySelector('#ytm-account')?.value,
     };
     try {
       const res = await fetch(`/api/projects/${state.selected.id}/youtube/upload`, {

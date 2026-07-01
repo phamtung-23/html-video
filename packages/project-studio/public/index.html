@@ -1122,6 +1122,12 @@
   .yt-btn.yt-ai:hover .ico-svg { color: var(--accent-fg); }
   .yt-btn.yt-ai:disabled { opacity: .6; cursor: default; }
   .yt-ok { display: inline-flex; align-items: center; color: var(--accent); font-weight: 500; font-size: 13px; }
+  /* Connected-accounts list (multi-account YouTube). */
+  .acct-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .acct-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; }
+  .acct-row .yt-ok { font-size: 12.5px; min-width: 0; }
+  .acct-row .yt-ok .ico-svg { flex: 0 0 auto; }
   /* upload modal — shares .settings-head; flush header + padded body */
   .modal.yt-modal { width: min(460px, 92vw); max-width: 460px; padding: 0; gap: 0; }
   .yt-modal .settings-head h2 { display: inline-flex; align-items: center; gap: 0; }
@@ -1419,6 +1425,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.9-captions"></script>
+<script type="module" src="/app.js?v=0.9-yt-multi"></script>
 </body>
 </html>

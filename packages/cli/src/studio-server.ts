@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
 import { AssetStore, generateTtsEdge, probeDurationSec } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
-import { buildAuthUrl as ytAuthUrl, exchangeCode as ytExchangeCode, getAccessToken as ytAccessToken, uploadVideo as ytUpload } from './youtube.js';
+import { buildAuthUrl as ytAuthUrl, exchangeCode as ytExchangeCode, getAccessToken as ytAccessToken, uploadVideo as ytUpload, getChannelInfo as ytChannelInfo } from './youtube.js';
 import { buildAuthUrl as fbAuthUrl, exchangeCode as fbExchangeCode, listPages as fbListPages, uploadReel as fbUploadReel } from './facebook.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -765,26 +765,40 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         if (!y.clientId || !y.clientSecret) { page('Chưa có client id/secret', false); return; }
         try {
           const { refreshToken } = await ytExchangeCode({ clientId: y.clientId, clientSecret: y.clientSecret, code, redirectUri: ytRedirect() });
-          ctx.mediaConfig.setYouTubeToken(refreshToken);
-          page('Đã kết nối YouTube!', true);
+          // Identify the channel so multiple accounts get distinct labels + dedupe.
+          let id = ''; let title = '';
+          try {
+            const at = await ytAccessToken({ clientId: y.clientId, clientSecret: y.clientSecret, refreshToken });
+            ({ id, title } = await ytChannelInfo(at));
+          } catch { /* labeling is best-effort */ }
+          const n = y.accounts.length + 1;
+          ctx.mediaConfig.addYouTubeAccount({
+            id: id || `acc-${Date.now()}`,
+            label: title || `Kênh ${n}`,
+            refreshToken,
+          });
+          page(`Đã kết nối YouTube${title ? `: ${title}` : ''}!`, true);
         } catch (e) {
           page(`Kết nối thất bại: ${e instanceof Error ? e.message : String(e)}`, false);
         }
         return;
       }
       if (url.pathname === '/api/youtube/disconnect' && m === 'POST') {
-        ctx.mediaConfig.clearYouTube({ keepCreds: true });
+        const { accountId } = (await readBody(req).catch(() => ({}))) as { accountId?: string };
+        if (accountId) ctx.mediaConfig.removeYouTubeAccount(accountId);
+        else ctx.mediaConfig.clearYouTube({ keepCreds: true });
         return json(res, 200, { ...ctx.mediaConfig.getYouTubeStatus() });
       }
       const ytUpMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/youtube\/upload$/);
       if (ytUpMatch && ytUpMatch[1] && m === 'POST') {
         const projectId = ytUpMatch[1];
-        const body = (await readBody(req)) as { filename?: string; title?: string; description?: string; privacy?: string; tags?: string[] };
+        const body = (await readBody(req)) as { filename?: string; title?: string; description?: string; privacy?: string; tags?: string[]; accountId?: string };
         res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
         const sse = (o: unknown) => { try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* client gone */ } };
         try {
           const y = ctx.mediaConfig.getYouTube();
-          if (!y.clientId || !y.clientSecret || !y.refreshToken) {
+          const account = ctx.mediaConfig.getYouTubeAccount(body.accountId);
+          if (!y.clientId || !y.clientSecret || !account) {
             sse({ type: 'yt_failed', message: 'Chưa kết nối YouTube — vào Cài đặt → YouTube để kết nối.' }); res.end(); return;
           }
           const filename = body.filename || '';
@@ -792,7 +806,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const filePath = join(await ctx.projects.ensureDir(projectId), filename);
           if (!existsSync(filePath)) { sse({ type: 'yt_failed', message: 'Không tìm thấy file' }); res.end(); return; }
           sse({ type: 'yt_progress', stage: 'auth' });
-          const accessToken = await ytAccessToken({ clientId: y.clientId, clientSecret: y.clientSecret, refreshToken: y.refreshToken });
+          const accessToken = await ytAccessToken({ clientId: y.clientId, clientSecret: y.clientSecret, refreshToken: account.refreshToken });
           sse({ type: 'yt_progress', stage: 'uploading' });
           const bytes = await readFile(filePath);
           const privacy = (['private', 'unlisted', 'public'].includes(String(body.privacy)) ? body.privacy : 'private') as 'private' | 'unlisted' | 'public';
