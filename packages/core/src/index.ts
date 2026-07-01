@@ -22,3 +22,6 @@ export {
   EDGE_TTS_DEFAULT_VOICE,
 } from './edge-tts.js';
 export type { EdgeTtsCommand, TtsAudioResult } from './edge-tts.js';
+export { buildCaptionAss, parseSrtCues } from './subtitles.js';
+export type { CaptionCue, CaptionStyleOpts } from './subtitles.js';
+export { ffmpegBin, ffprobeBin } from './ffmpeg.js';

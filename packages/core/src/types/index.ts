@@ -396,6 +396,11 @@ export interface ProjectSoundtrack {
   fadeInSec?: number;
   /** Optional music fade-out seconds at the end of the video */
   fadeOutSec?: number;
+  /** Burn word-by-word captions (from the narration) into the exported video. */
+  captions?: boolean;
+  /** Sentence-level caption timing captured from the narration synthesis;
+   *  words are distributed within each cue at burn time. */
+  captionCues?: Array<{ text: string; start: number; end: number }>;
 }
 
 export interface Project {

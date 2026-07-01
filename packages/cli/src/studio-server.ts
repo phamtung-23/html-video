@@ -418,7 +418,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (genAudioMatch && genAudioMatch[1] && m === 'POST') {
         const projectId = genAudioMatch[1];
         const body = (await readBody(req)) as {
-          narration?: { text?: string; voiceId?: string; volumeDb?: number; speed?: number; byFrame?: Record<string, string> };
+          narration?: { text?: string; voiceId?: string; volumeDb?: number; speed?: number; byFrame?: Record<string, string>; captions?: boolean };
           fadeInSec?: number;
           fadeOutSec?: number;
         };
@@ -487,6 +487,9 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             if (body.narration!.byFrame) soundtrack.narrationByFrame = body.narration!.byFrame;
             if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
             soundtrack.narrationSpeed = speed;
+            // Caption timing (sentence cues) for burning word-by-word subtitles.
+            if (nar.boundaries && nar.boundaries.length > 0) soundtrack.captionCues = nar.boundaries;
+            if (body.narration!.captions !== undefined) soundtrack.captions = body.narration!.captions;
             sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
           }
 

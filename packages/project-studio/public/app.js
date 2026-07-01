@@ -922,6 +922,7 @@ function renderMain() {
                     </div>
                     <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
                     <div class="st-vol-row"><label>${t('soundtrack.narration_speed')} <input type="range" id="st-narration-speed" min="0.5" max="1.5" step="0.05" value="1" /><b id="st-narration-speed-val">1.00×</b></label></div>
+                    <label class="st-cap-row"><input type="checkbox" id="st-narration-captions"${state.selected?.soundtrack?.captions !== false ? ' checked' : ''} /> <span>${t('soundtrack.captions')}</span></label>
                     <div class="st-section-actions">
                       <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
                       <span class="st-status" id="st-narration-status"></span>
@@ -1314,7 +1315,8 @@ function wireSoundtrackPanel() {
       const nt = stitched || narrationText.value.trim();
       if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
       const voiceSel = document.getElementById('st-narration-voice');
-      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), speed: Number(narrationSpeed?.value ?? 1), byFrame: state._narrationByFrame, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
+      const captionsChk = document.getElementById('st-narration-captions');
+      payload.narration = { text: nt, volumeDb: Number(narrationVol.value), speed: Number(narrationSpeed?.value ?? 1), byFrame: state._narrationByFrame, captions: !!captionsChk?.checked, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
     }
 
     const label = btn?.innerHTML;

@@ -25,7 +25,7 @@ import type {
   RenderInput,
   RenderOutput,
 } from '@html-video/core';
-import { HtmlVideoError } from '@html-video/core';
+import { HtmlVideoError, ffmpegBin } from '@html-video/core';
 
 const ADAPTER_VERSION = '0.2.0-playwright';
 
@@ -419,7 +419,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
 
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     proc.stderr.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8');

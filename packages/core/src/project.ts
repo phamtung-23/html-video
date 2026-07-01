@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import type {
   Asset,
@@ -25,6 +27,8 @@ import {
   DEFAULT_FRAME_DURATION_SEC,
 } from '@html-video/content-graph';
 import { HtmlVideoError } from './errors.js';
+import { buildCaptionAss } from './subtitles.js';
+import { ffmpegBin, ffprobeBin } from './ffmpeg.js';
 import type { AssetStore } from './asset-store.js';
 import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
 
@@ -661,8 +665,30 @@ export class ProjectOrchestrator {
     if (!musicPath && !narrationPath) return; // referenced assets are gone
 
     onProgress?.(99, 'mixing audio');
-    const { rename } = await import('node:fs/promises');
+    const { rename, writeFile, unlink } = await import('node:fs/promises');
     const tmpOut = `${outputPath}.muxed.mp4`;
+
+    // Word-by-word captions: build an ASS from the stored cues and burn it in.
+    // Only meaningful with narration (cues come from it); requires re-encode.
+    // Skips gracefully (export still succeeds) if this ffmpeg lacks libass.
+    let assPath: string | undefined;
+    if (st.captions && st.captionCues && st.captionCues.length > 0 && narrationPath) {
+      if (!ffmpegSupportsAss()) {
+        onProgress?.(99, 'captions skipped — ffmpeg has no libass (see: brew install ffmpeg)');
+      } else {
+        const dims = probeVideoDimensions(outputPath);
+        const ass = buildCaptionAss(st.captionCues, {
+          ...(dims?.width !== undefined && { width: dims.width }),
+          ...(dims?.height !== undefined && { height: dims.height }),
+        });
+        assPath = `${outputPath}.captions.ass`;
+        await writeFile(assPath, ass, 'utf8');
+      }
+    }
+    // Custom fonts (e.g. Geist) live here; hand libass their dir so `fontName`
+    // resolves even when the font isn't installed system-wide.
+    const fontsDir = join(this.deps.projectRoot, '.html-video', 'fonts');
+    const hasFonts = assPath !== undefined && existsSync(fontsDir);
     // A background-music asset may be longer than the video; `-shortest`
     // already trims it to the video length, but a hard cut sounds abrupt.
     // Default a gentle fade-out (≤ a third of the clip, capped 1.5s) when the
@@ -682,9 +708,42 @@ export class ProjectOrchestrator {
       ...(st.fadeInSec !== undefined && { fadeInSec: st.fadeInSec }),
       ...(fadeOutSec > 0 && { fadeOutSec }),
       ...(videoDurationSec !== undefined && { videoDurationSec }),
+      ...(assPath !== undefined && { assPath }),
+      ...(hasFonts && { fontsDir }),
     });
     await rename(tmpOut, outputPath);
+    if (assPath) await unlink(assPath).catch(() => {});
   }
+}
+
+/** Does this ffmpeg build include the libass `ass` filter? (cached). */
+let _assFilterSupport: boolean | undefined;
+function ffmpegSupportsAss(): boolean {
+  if (_assFilterSupport !== undefined) return _assFilterSupport;
+  try {
+    const out = execFileSync(ffmpegBin(), ['-hide_banner', '-filters'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString();
+    _assFilterSupport = /\bass\s+[SAVN|]+->[SAVN|]+/.test(out);
+  } catch {
+    _assFilterSupport = false;
+  }
+  return _assFilterSupport;
+}
+
+/** Probe a video's pixel dimensions with ffprobe (best-effort). */
+function probeVideoDimensions(file: string): { width: number; height: number } | undefined {
+  try {
+    const out = execFileSync(
+      ffprobeBin(),
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+        '-of', 'csv=s=x:p=0', file],
+      { stdio: ['ignore', 'pipe', 'ignore'] },
+    ).toString().trim();
+    const [w, h] = out.split('x').map((n) => Number.parseInt(n, 10));
+    if (Number.isFinite(w) && Number.isFinite(h) && w! > 0 && h! > 0) return { width: w!, height: h! };
+  } catch { /* ffprobe absent or failed */ }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -790,7 +849,7 @@ async function concatFramesWithFfmpeg(
   }
 
   await new Promise<void>((resolveFn, reject) => {
-    const proc = spawn('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(ffmpegBin(), ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     proc.stderr.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8');
@@ -841,8 +900,13 @@ async function muxAudioWithFfmpeg(args: {
   fadeInSec?: number;
   fadeOutSec?: number;
   videoDurationSec?: number;
+  /** Absolute path to an ASS subtitle file to burn into the video. */
+  assPath?: string;
+  /** Directory of extra fonts for libass to resolve style font names. */
+  fontsDir?: string;
 }): Promise<void> {
   const { spawn } = await import('node:child_process');
+  const { dirname, basename: base } = await import('node:path');
   const hasMusic = !!args.musicPath;
   const hasNarration = !!args.narrationPath;
   if (!hasMusic && !hasNarration) return; // nothing to mix
@@ -890,13 +954,29 @@ async function muxAudioWithFfmpeg(args: {
     filters.push(`${mixLabels[0]}apad[aout]`);
   }
 
+  // Burn captions? Add a video filter (`ass`) and re-encode; otherwise copy the
+  // video stream untouched. We run ffmpeg with cwd = the ass file's dir and
+  // reference it by basename, sidestepping filtergraph path-escaping entirely.
+  const burn = !!args.assPath;
+  const videoMap = burn ? '[vout]' : '0:v';
+  if (burn) {
+    // Single-quote the fonts dir so the filtergraph parser doesn't swallow the
+    // following [vout] pad label into the path value.
+    const escFonts = (args.fontsDir ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const fontsOpt = args.fontsDir ? `:fontsdir='${escFonts}'` : '';
+    filters.push(`[0:v]ass=${base(args.assPath!)}${fontsOpt}[vout]`);
+  }
+  const videoCodec = burn
+    ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p']
+    : ['-c:v', 'copy'];
+
   const ffArgs = [
     '-y',
     ...inputs,
     '-filter_complex', filters.join(';'),
-    '-map', '0:v',
+    '-map', videoMap,
     '-map', '[aout]',
-    '-c:v', 'copy',
+    ...videoCodec,
     '-c:a', 'aac',
     '-b:a', '192k',
     '-shortest',
@@ -904,7 +984,10 @@ async function muxAudioWithFfmpeg(args: {
   ];
 
   await new Promise<void>((resolveFn, reject) => {
-    const proc = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(ffmpegBin(), ffArgs, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(burn && { cwd: dirname(args.assPath!) }),
+    });
     let stderr = '';
     proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
     proc.on('error', (err: NodeJS.ErrnoException) => {

@@ -7,6 +7,10 @@
 
 CLI  := node packages/cli/dist/bin.js
 PORT ?= 3071
+# Prefer a bundled full-featured ffmpeg (with libass, for burned captions) if
+# present under .html-video/bin — falls back to system ffmpeg otherwise.
+FFMPEG_BIN  := $(abspath .html-video/bin/ffmpeg)
+FFPROBE_BIN := $(abspath .html-video/bin/ffprobe)
 
 .DEFAULT_GOAL := studio
 .PHONY: studio dev build install smoke doctor clean help
@@ -14,7 +18,12 @@ PORT ?= 3071
 ## studio: Launch the project studio at http://localhost:$(PORT)
 studio:
 	@test -f packages/cli/dist/bin.js || { echo "→ Not built yet. Run 'make build' (or 'make dev') first."; exit 1; }
-	$(CLI) studio --port $(PORT)
+	@if [ -x "$(FFMPEG_BIN)" ]; then \
+	  echo "→ using bundled ffmpeg (libass) at $(FFMPEG_BIN)"; \
+	  HV_FFMPEG_BIN="$(FFMPEG_BIN)" HV_FFPROBE_BIN="$(FFPROBE_BIN)" $(CLI) studio --port $(PORT); \
+	else \
+	  $(CLI) studio --port $(PORT); \
+	fi
 
 ## dev: Build all packages, then launch the studio
 dev: build studio

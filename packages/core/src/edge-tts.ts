@@ -25,6 +25,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HtmlVideoError } from './errors.js';
+import { parseSrtCues, type CaptionCue } from './subtitles.js';
+import { ffprobeBin } from './ffmpeg.js';
 
 /** Result of a text-to-speech synthesis: decoded audio bytes plus metadata. */
 export interface TtsAudioResult {
@@ -36,6 +38,8 @@ export interface TtsAudioResult {
   providerNote: string;
   /** Reported duration in seconds, if known. */
   durationSec?: number;
+  /** Sentence-level timing (from edge-tts subtitles) for caption generation. */
+  boundaries?: CaptionCue[];
 }
 
 /** Friendly built-in Vietnamese voices, surfaced so the UI/CLI can offer them. */
@@ -120,7 +124,7 @@ function speedToRate(speed: number): string {
 export function probeDurationSec(file: string): number | undefined {
   try {
     const out = execFileSync(
-      'ffprobe',
+      ffprobeBin(),
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file],
       { stdio: ['ignore', 'pipe', 'ignore'] },
     ).toString().trim();
@@ -180,6 +184,7 @@ export async function generateTtsEdge(opts: {
   const work = await mkdtemp(join(tmpdir(), 'hv-edge-tts-'));
   const textFile = join(work, 'narration.txt');
   const outFile = join(work, 'narration.mp3');
+  const subFile = join(work, 'narration.srt');
   try {
     await writeFile(textFile, text, 'utf8');
 
@@ -191,6 +196,8 @@ export async function generateTtsEdge(opts: {
       '--volume', volume,
       '--file', textFile,
       '--write-media', outFile,
+      // Sentence-level timing → later distributed to words for captions.
+      '--write-subtitles', subFile,
     ];
 
     await new Promise<void>((resolvePromise, reject) => {
@@ -231,11 +238,21 @@ export async function generateTtsEdge(opts: {
       throw new HtmlVideoError('render-failed', 'edge-tts produced an empty audio file');
     }
     const durationSec = probeDurationSec(outFile);
+    // Best-effort caption timing; absence must never fail synthesis.
+    let boundaries: CaptionCue[] | undefined;
+    if (existsSync(subFile)) {
+      try {
+        const srt = await readFile(subFile, 'utf8');
+        const cues = parseSrtCues(srt);
+        if (cues.length) boundaries = cues;
+      } catch { /* no captions this run */ }
+    }
     return {
       bytes,
       ext: '.mp3',
       providerNote: `edge-tts · ${voice} · ${durationSec ?? '?'}s · ${bytes.length} bytes`,
       ...(durationSec !== undefined && { durationSec }),
+      ...(boundaries !== undefined && { boundaries }),
     };
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {});
