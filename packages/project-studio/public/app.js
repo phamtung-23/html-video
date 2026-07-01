@@ -775,6 +775,8 @@ function _agentMenuOutside(e) {
 function wireToolbar() {
   const settingsBtn = document.getElementById('btn-settings');
   if (settingsBtn) settingsBtn.onclick = () => openSettingsModal();
+  const quickBtn = document.getElementById('btn-quick-upload');
+  if (quickBtn) quickBtn.onclick = () => openQuickUpload();
   const pickBtn = document.getElementById('btn-pick-template');
   if (pickBtn) {
     pickBtn.onclick = (e) => {
@@ -3689,6 +3691,126 @@ async function openFacebookUpload(filename) {
             if (state.rightTab === 'exports') renderExportsPanel();
           }
           else if (ev.type === 'fb_failed') { statusEl.textContent = 'Lỗi: ' + ev.message; toast('Đăng thất bại: ' + ev.message, 'error'); goBtn.disabled = false; }
+        }
+      }
+    } catch (e) { statusEl.textContent = 'Lỗi: ' + (e?.message ?? e); goBtn.disabled = false; }
+  };
+}
+
+// ── Quick-upload: attach any video → post to YouTube/Facebook with AI copy ──
+async function openQuickUpload() {
+  let yt = {}; let fb = {};
+  try { yt = await (await fetch('/api/youtube/status')).json(); } catch { /* offline */ }
+  try { fb = await (await fetch('/api/facebook/status')).json(); } catch { /* offline */ }
+  const ytAccounts = yt.accounts || [];
+  const ytOn = ytAccounts.length > 0;
+  const fbOn = !!fb.pageSelected;
+  if (!ytOn && !fbOn) { toast('Chưa kết nối YouTube/Facebook — vào Cài đặt để kết nối.', 'error'); openSettingsModal('general'); return; }
+  let platform = ytOn ? 'youtube' : 'facebook';
+
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg show';
+  ov.innerHTML = `<div class="modal yt-modal">
+    <div class="settings-head"><h2>${iconL('sparkles')}Đăng nhanh video</h2>
+      <button class="modal-close" id="qu-x" aria-label="Close">${icon('x')}</button></div>
+    <div class="yt-modal-body">
+      <label class="yt-flabel">Nền tảng</label>
+      <div class="qu-platforms">
+        ${ytOn ? `<button type="button" class="qu-plat" data-plat="youtube">${ytGlyph()}<span>YouTube Short</span></button>` : ''}
+        ${fbOn ? `<button type="button" class="qu-plat" data-plat="facebook">${fbGlyph()}<span>Facebook Reel</span></button>` : ''}
+      </div>
+      <label class="yt-flabel">Video (.mp4)</label>
+      <input class="yt-input" type="file" id="qu-file" accept="video/mp4,video/*" />
+      <label class="yt-flabel">Nội dung video (cho AI viết tiêu đề)</label>
+      <textarea class="yt-input" id="qu-topic" rows="2" placeholder="Vd: hướng dẫn deploy Kubernetes bằng game 3D trên trình duyệt…"></textarea>
+      <button class="yt-btn yt-ai" id="qu-ai">${iconL('sparkles')}AI viết tiêu đề &amp; mô tả viral</button>
+      <div id="qu-platfields"></div>
+      <div class="yt-modal-actions">
+        <span class="yt-status" id="qu-status"></span>
+        <button class="yt-btn yt-primary" id="qu-go">Đăng</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('#qu-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const statusEl = ov.querySelector('#qu-status');
+  const platFields = ov.querySelector('#qu-platfields');
+
+  const renderPlatFields = () => {
+    ov.querySelectorAll('.qu-plat').forEach((b) => b.classList.toggle('active', b.dataset.plat === platform));
+    if (platform === 'youtube') {
+      platFields.innerHTML = `
+        ${ytAccounts.length > 1
+          ? `<label class="yt-flabel">Kênh</label><select class="yt-input" id="qu-account">${ytAccounts.map((a) => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join('')}</select>`
+          : `<input type="hidden" id="qu-account" value="${esc(ytAccounts[0]?.id || '')}" />`}
+        <label class="yt-flabel">Tiêu đề</label>
+        <input class="yt-input" id="qu-title" maxlength="100" placeholder="Tiêu đề video" />
+        <label class="yt-flabel">Mô tả</label>
+        <textarea class="yt-input" id="qu-desc" rows="3" placeholder="Mô tả… (#Shorts sẽ được tự thêm)"></textarea>
+        <label class="yt-flabel">Chế độ hiển thị</label>
+        <select class="yt-input" id="qu-priv"><option value="private">Riêng tư (private)</option><option value="unlisted">Không công khai (unlisted)</option><option value="public">Công khai (public)</option></select>`;
+    } else {
+      platFields.innerHTML = `
+        <div class="yt-note" style="margin:0 0 6px">Đăng lên Trang: <b>${esc(fb.pageName || '')}</b></div>
+        <label class="yt-flabel">Mô tả</label>
+        <textarea class="yt-input" id="qu-desc" rows="3" placeholder="Mô tả Reel…"></textarea>
+        <label class="yt-flabel">Trạng thái</label>
+        <select class="yt-input" id="qu-state"><option value="DRAFT">Nháp (draft — chỉ lưu)</option><option value="PUBLISHED">Đăng công khai</option></select>`;
+    }
+  };
+  renderPlatFields();
+  ov.querySelectorAll('.qu-plat').forEach((b) => { b.onclick = () => { platform = b.dataset.plat; renderPlatFields(); }; });
+
+  ov.querySelector('#qu-ai').onclick = async (e) => {
+    const btn = e.currentTarget;
+    const topic = ov.querySelector('#qu-topic').value.trim();
+    if (!topic) { toast('Nhập nội dung video để AI viết', 'error'); return; }
+    const agentId = state.selected?.agentId ?? (state.agents.find((a) => a.available && a.id !== 'amr')?.id ?? 'anthropic-api');
+    const orig = btn.innerHTML; btn.disabled = true; btn.textContent = 'AI đang viết…';
+    try {
+      const r = await fetch('/api/draft-social-freeform', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agentId, platform, topic }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      const titleEl = ov.querySelector('#qu-title'); const descEl = ov.querySelector('#qu-desc');
+      if (d.title && titleEl) titleEl.value = d.title;
+      if (d.description && descEl) descEl.value = d.description;
+      toast('AI đã viết tiêu đề & mô tả ✓', 'success');
+    } catch (err) { toast('AI viết thất bại: ' + (err?.message ?? err), 'error'); }
+    finally { btn.innerHTML = orig; btn.disabled = false; }
+  };
+
+  ov.querySelector('#qu-go').onclick = async () => {
+    const goBtn = ov.querySelector('#qu-go');
+    const file = ov.querySelector('#qu-file').files?.[0];
+    if (!file) { toast('Chọn file video trước', 'error'); return; }
+    goBtn.disabled = true; statusEl.textContent = 'Đang tải lên…';
+    const fd = new FormData();
+    fd.append('description', ov.querySelector('#qu-desc')?.value || '');
+    if (platform === 'youtube') {
+      fd.append('title', ov.querySelector('#qu-title')?.value || file.name);
+      fd.append('privacy', ov.querySelector('#qu-priv')?.value || 'private');
+      fd.append('accountId', ov.querySelector('#qu-account')?.value || '');
+    } else {
+      fd.append('state', ov.querySelector('#qu-state')?.value || 'DRAFT');
+    }
+    fd.append('video', file, file.name);
+    try {
+      const res = await fetch(`/api/quick-upload/${platform}`, { method: 'POST', headers: { accept: 'text/event-stream' }, body: fd });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const evs = buf.split('\n\n'); buf = evs.pop() ?? '';
+        for (const line of evs) {
+          if (!line.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+          if (ev.type === 'yt_progress' || ev.type === 'fb_progress') statusEl.textContent = ev.stage === 'auth' ? 'Xác thực…' : 'Đang tải lên…';
+          else if (ev.type === 'yt_done') { statusEl.innerHTML = `${iconL('check')}Đã đăng! <a href="${esc(ev.url)}" target="_blank" rel="noopener">Mở video</a>`; toast('Đã đăng YouTube ✓', 'success'); goBtn.textContent = 'Đã đăng'; }
+          else if (ev.type === 'fb_done') { statusEl.innerHTML = ev.state === 'DRAFT' ? `${iconL('check')}Đã lưu nháp! Mở Meta Business Suite để đăng.` : `${iconL('check')}Đã đăng! <a href="${esc(ev.url)}" target="_blank" rel="noopener">Mở Reel</a>`; toast('Đã đăng Facebook ✓', 'success'); goBtn.textContent = 'Đã đăng'; }
+          else if (ev.type === 'yt_failed' || ev.type === 'fb_failed') { statusEl.textContent = 'Lỗi: ' + ev.message; toast('Đăng thất bại: ' + ev.message, 'error'); goBtn.disabled = false; }
         }
       }
     } catch (e) { statusEl.textContent = 'Lỗi: ' + (e?.message ?? e); goBtn.disabled = false; }

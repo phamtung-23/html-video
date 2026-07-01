@@ -935,6 +935,112 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return;
       }
 
+      // ── Quick-upload: post an ATTACHED video (no project) ─────────────────
+      // AI title/description from a free-form topic (no content-graph available).
+      if (url.pathname === '/api/draft-social-freeform' && m === 'POST') {
+        try {
+          const body = (await readBody(req)) as { agentId?: string; platform?: string; topic?: string };
+          const platform = body.platform === 'facebook' ? 'Facebook Reels' : 'YouTube Shorts';
+          const tagHint = platform === 'YouTube Shorts' ? 'include #Shorts plus topic hashtags' : 'topic + trending hashtags (no #Shorts)';
+          const topic = (body.topic || '').trim();
+          if (!body.agentId) return json(res, 400, { error: 'No agent selected.' });
+          if (!topic) return json(res, 400, { error: 'Cần mô tả nội dung video để AI viết tiêu đề.' });
+          const agentDef = findAgent(body.agentId);
+          if (!agentDef) return json(res, 400, { error: `agent "${body.agentId}" not registered` });
+          const prompt = [
+            `You are a viral short-form video growth expert. Write a ${platform} TITLE and DESCRIPTION for a video about the topic below, optimized for clicks + reach so it can trend.`,
+            ``,
+            `Topic / description of the video: ${topic}`,
+            ``,
+            `Requirements:`,
+            `- TITLE: ONE line, scroll-stopping, curiosity-driven, ≤ 80 characters, front-load the hook. No clickbait lies, no quotes.`,
+            `- DESCRIPTION: 1-3 short punchy lines, then a final line of 5-10 relevant hashtags (${tagHint}).`,
+            `- Same language as the topic text. Plain text only, no markdown, no emojis in the title.`,
+            ``,
+            `Return EXACTLY in this format and nothing else:`,
+            `TITLE: <the title>`,
+            `---`,
+            `<the description with hashtags>`,
+          ].join('\n');
+          const raw = (await callAgentSimple(agentDef, prompt, ctx.projectRoot)).trim();
+          let title = ''; let description = '';
+          const sep = raw.indexOf('---');
+          if (sep >= 0) {
+            title = (raw.slice(0, sep).replace(/^\s*TITLE:\s*/i, '').trim().split('\n')[0] ?? '').trim();
+            description = raw.slice(sep + 3).trim();
+          } else {
+            const ls = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+            title = (ls[0] ?? '').replace(/^\s*TITLE:\s*/i, '').trim();
+            description = ls.slice(1).join('\n').trim();
+          }
+          title = title.replace(/^["'“”]+|["'“”]+$/g, '').slice(0, 100);
+          return json(res, 200, { title, description });
+        } catch (err) {
+          return json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      // Quick-upload an attached MP4 to YouTube (multipart in → SSE out).
+      if (url.pathname === '/api/quick-upload/youtube' && m === 'POST') {
+        const ct = String(req.headers['content-type'] || '');
+        let parts: Awaited<ReturnType<typeof receiveMultipart>>;
+        try { parts = await receiveMultipart(req, ct); } catch { return json(res, 400, { error: 'invalid multipart upload' }); }
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+        const sse = (o: unknown) => { try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* gone */ } };
+        const file = parts.find((p): p is Extract<typeof parts[number], { kind: 'file' }> => p.kind === 'file');
+        const field = (n: string) => parts.find((p) => p.kind === 'field' && p.name === n) as { value?: string } | undefined;
+        const { unlink } = await import('node:fs/promises');
+        try {
+          if (!file) { sse({ type: 'yt_failed', message: 'Thiếu file video' }); res.end(); return; }
+          const y = ctx.mediaConfig.getYouTube();
+          const account = ctx.mediaConfig.getYouTubeAccount(field('accountId')?.value);
+          if (!y.clientId || !y.clientSecret || !account) { sse({ type: 'yt_failed', message: 'Chưa kết nối YouTube — vào Cài đặt → YouTube.' }); res.end(); return; }
+          sse({ type: 'yt_progress', stage: 'auth' });
+          const accessToken = await ytAccessToken({ clientId: y.clientId, clientSecret: y.clientSecret, refreshToken: account.refreshToken });
+          sse({ type: 'yt_progress', stage: 'uploading' });
+          const bytes = await readFile(file.tmpPath);
+          const privacy = (['private', 'unlisted', 'public'].includes(String(field('privacy')?.value)) ? field('privacy')!.value : 'private') as 'private' | 'unlisted' | 'public';
+          const rawDesc = field('description')?.value || '';
+          const desc = rawDesc.includes('#Shorts') ? rawDesc : `${rawDesc.trim()}\n\n#Shorts`.trim();
+          const r = await ytUpload({ accessToken, bytes, title: field('title')?.value || file.filename, description: desc, privacyStatus: privacy });
+          sse({ type: 'yt_done', videoId: r.videoId, url: r.url });
+        } catch (e) {
+          sse({ type: 'yt_failed', message: e instanceof Error ? e.message : String(e) });
+        } finally {
+          if (file) await unlink(file.tmpPath).catch(() => {});
+        }
+        res.end();
+        return;
+      }
+
+      // Quick-upload an attached MP4 to Facebook Reels (multipart in → SSE out).
+      if (url.pathname === '/api/quick-upload/facebook' && m === 'POST') {
+        const ct = String(req.headers['content-type'] || '');
+        let parts: Awaited<ReturnType<typeof receiveMultipart>>;
+        try { parts = await receiveMultipart(req, ct); } catch { return json(res, 400, { error: 'invalid multipart upload' }); }
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
+        const sse = (o: unknown) => { try { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); } catch { /* gone */ } };
+        const file = parts.find((p): p is Extract<typeof parts[number], { kind: 'file' }> => p.kind === 'file');
+        const field = (n: string) => parts.find((p) => p.kind === 'field' && p.name === n) as { value?: string } | undefined;
+        const { unlink } = await import('node:fs/promises');
+        try {
+          if (!file) { sse({ type: 'fb_failed', message: 'Thiếu file video' }); res.end(); return; }
+          const f = ctx.mediaConfig.getFacebook();
+          if (!f.pageId || !f.pageToken) { sse({ type: 'fb_failed', message: 'Chưa kết nối Facebook — vào Cài đặt → Facebook.' }); res.end(); return; }
+          sse({ type: 'fb_progress', stage: 'uploading' });
+          const bytes = await readFile(file.tmpPath);
+          const state = (['PUBLISHED', 'DRAFT'].includes(String(field('state')?.value)) ? field('state')!.value : 'PUBLISHED') as 'PUBLISHED' | 'DRAFT';
+          const r = await fbUploadReel({ pageId: f.pageId, pageToken: f.pageToken, bytes, description: field('description')?.value, state });
+          sse({ type: 'fb_done', videoId: r.videoId, url: r.url, state });
+        } catch (e) {
+          sse({ type: 'fb_failed', message: e instanceof Error ? e.message : String(e) });
+        } finally {
+          if (file) await unlink(file.tmpPath).catch(() => {});
+        }
+        res.end();
+        return;
+      }
+
       // Narration TTS config — GET status, POST to set the Edge-TTS voice.
       // Narration uses the free, key-less Edge-TTS engine (no credentials).
       if (url.pathname === '/api/config/tts' && m === 'GET') {
