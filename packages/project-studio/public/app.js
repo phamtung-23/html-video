@@ -1299,10 +1299,18 @@ function wireSoundtrackPanel() {
     const statusEl = narrationStatusEl;
     const payload = {};
     {
-      // Stitch every frame's line in order into one narration track.
-      const stitched = sortedFrames
-        .map((f) => (state._narrationByFrame[f.graphNodeId] || '').trim())
-        .filter((s) => s.length > 0).join('\n');
+      // Stitch every frame's line into ONE narration track, in frame order.
+      // Read frames LIVE (not the render-time snapshot) AND also append any
+      // narration entries whose key isn't in the current frame list. Without
+      // that, lines get silently dropped when a frame's id and its content-graph
+      // node id drift apart (regenerate) — the bug where only frame 1 got voiced.
+      const byFrame = state._narrationByFrame || {};
+      const frameOrder = liveFrames().map((f) => f.graphNodeId);
+      const orderedKeys = [...new Set([...frameOrder, ...Object.keys(byFrame)].filter(Boolean))];
+      const stitched = orderedKeys
+        .map((k) => (byFrame[k] || '').trim())
+        .filter((s) => s.length > 0)
+        .join('\n');
       const nt = stitched || narrationText.value.trim();
       if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
       const voiceSel = document.getElementById('st-narration-voice');
