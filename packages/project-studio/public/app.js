@@ -1,6 +1,6 @@
 // html-video studio v0.4 — chat-driven HTML + template gallery + text-node editor
 
-import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-exports';
+import { t, getLocale, setLocale, AVAILABLE_LOCALES } from './i18n.js?v=0.9-exportcard';
 
 // Re-render whole UI on language change.
 document.addEventListener('hv-locale-change', () => {
@@ -37,6 +37,9 @@ const ICON_PATHS = {
   zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
   externalLink: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
   sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"/>',
   cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
@@ -470,7 +473,10 @@ function renderSidebar() {
   for (const p of state.projects) {
     const div = document.createElement('div');
     div.className = 'project-row' + (p.id === state.selectedId ? ' active' : '');
+    const initial = ((p.name || '').trim().charAt(0) || '?').toUpperCase();
+    div.title = p.name || '';
     div.innerHTML = `
+      <div class="project-avatar" aria-hidden="true">${esc(initial)}</div>
       <div class="name">${esc(p.name)}</div>
       <div class="meta">${p.template_id ? esc(p.template_id) : 'no template'} · ${p.status}</div>
       <button class="row-menu-btn" title="More" data-pid="${esc(p.id)}">⋯</button>
@@ -813,7 +819,7 @@ function renderMain() {
     <aside class="sidebar">
       <div class="sidebar-head">
         <h2>${t('sidebar.projects')}</h2>
-        <button class="new-project" id="btn-new">${t('sidebar.new')}</button>
+        <button class="new-project" id="btn-new" title="${t('sidebar.new')}">${icon('plus')}<span class="np-label">${t('sidebar.new')}</span></button>
         <button class="sidebar-toggle" id="btn-sidebar-toggle" title="${t('sidebar.collapse')}">‹</button>
       </div>
       <div class="project-list" id="project-list"></div>
@@ -1652,8 +1658,18 @@ function renderChatLog() {
       const action = btn.dataset.exportAction;
       const card = btn.closest('.export-done');
       const path = card?.querySelector('.export-path code')?.textContent ?? '';
-      if (action === 'reveal') {
-        await revealExportedFile();
+      if (action === 'open-video') {
+        // Jump to the Video tab in the right pane (un-collapse it first).
+        document.body.classList.remove('textfields-collapsed');
+        document.querySelector('.text-tab[data-text-tab="exports"]')?.click();
+      } else if (action === 'reveal') {
+        // Reveal THIS card's file (not just the latest export).
+        try {
+          await fetch(`/api/projects/${state.selected.id}/reveal`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path }),
+          });
+        } catch (e) { toast(t('export.reveal_failed', { message: (e?.message ?? e) }), 'error'); }
       } else if (action === 'copy' && path) {
         try {
           await navigator.clipboard.writeText(path);
@@ -1698,11 +1714,12 @@ function renderMessage(m, idx) {
     const path = m.content || '';
     const fname = path.split('/').pop() || 'output.mp4';
     return `<div class="msg export-done">
-      <div class="export-title">${t('export.title')}</div>
+      <div class="export-title">${iconL('clapperboard')}${t('export.title')}</div>
       <div class="export-path"><code>${esc(path)}</code></div>
       <div class="export-actions">
-        <button class="btn-reveal" data-export-action="reveal">${t('export.reveal')}</button>
-        <button class="btn-copy-path" data-export-action="copy">${t('export.copy_path')}</button>
+        <button class="export-btn-icon" data-export-action="open-video" title="${esc(t('export.open_video'))}">${icon('film')}</button>
+        <button class="export-btn-icon" data-export-action="reveal" title="${esc(t('export.reveal'))}">${icon('folder')}</button>
+        <button class="export-btn-icon" data-export-action="copy" title="${esc(t('export.copy_path'))}">${icon('copy')}</button>
       </div>
       <div class="export-fname">${esc(fname)}</div>
     </div>`;
@@ -1819,6 +1836,18 @@ function sanitizeAssistantProse(text) {
 // Uses `marked` from CDN for proper headings/lists/bold/links/code,
 // then DOMPurify to sanitize, so user prompts can't inject script tags
 // even if the agent echos them back.
+// Swap the plain-text progress glyphs the server streams (📋/🎬/🎞) for the
+// standard SVG icon set, and tint success ticks with the primary accent. Runs
+// AFTER sanitize on trusted, fixed markup (DOMPurify strips <svg>, so it can't
+// run before). The underlying message content is untouched, so phase detection
+// (which reads m.content) is unaffected.
+function decorateProgress(html) {
+  return String(html)
+    .replace(/📋️?/g, () => icon('clipboard'))
+    .replace(/🎬️?/g, () => icon('clapperboard'))
+    .replace(/🎞️?/g, () => icon('film'))
+    .replace(/✓/g, '<span class="ok-check">✓</span>');
+}
 function md(text) {
   if (!text) return '';
   let html;
@@ -1833,13 +1862,13 @@ function md(text) {
     html = esc(text).replace(/\n/g, '<br>');
   }
   if (typeof window.DOMPurify !== 'undefined') {
-    return window.DOMPurify.sanitize(html, {
+    html = window.DOMPurify.sanitize(html, {
       ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'ul', 'ol', 'li', 'a', 'code', 'pre', 'blockquote', 'hr', 'span'],
       ALLOWED_ATTR: ['href', 'title', 'target', 'rel'],
     });
   }
-  return html;
+  return decorateProgress(html);
 }
 
 // === hv-options block parsing ===
@@ -1945,9 +1974,10 @@ function renderFormCard(form, submitted, msgIdx) {
     } else {
       control = `<input type="text" data-form-msg="${msgIdx}" data-form-key="${esc(key)}" placeholder="${esc(ph)}" value="${esc(def)}" ${dis} />`;
     }
-    const hintHtml = f.hint ? `<span class="form-hint">${esc(f.hint)}</span>` : '';
+    const hintHtml = f.hint ? `<div class="form-hint">${esc(f.hint)}</div>` : '';
     return `<div class="form-field">
-      <label>${esc(label)}${required}${hintHtml}</label>
+      <label>${esc(label)}${required}</label>
+      ${hintHtml}
       ${control}
     </div>`;
   }).join('');
