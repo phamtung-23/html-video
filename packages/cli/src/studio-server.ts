@@ -2174,7 +2174,51 @@ export async function startStudioServer(
             };
           }
 
-          if (isMultiGenerate || rewriteInputs) {
+          if (phaseInfo.phase === "brief") {
+            // Content-brief review: draft the content and show it on an editable
+            // card. No HTML yet — the user approves/edits, then the returning
+            // [hv-brief:approve] routes to generate with the approved brief.
+            const col = phaseInfo.inputs.collected ?? {};
+            const fcReq = Math.max(
+              2,
+              Math.min(10, Number(col.frame_count ?? "4") || 4),
+            );
+            const pf = Number(col.per_frame ?? "") || 0;
+            const totalDur =
+              pf > 0
+                ? Math.max(2, pf) * fcReq
+                : Number(col.duration ?? "15") || 15;
+            let briefText = await draftContentBrief({
+              frameCountReq: fcReq,
+              totalDurationSec: totalDur,
+              pickedType: phaseInfo.inputs.pickedType ?? "",
+              openingTopic: resolveOpeningTopic(project, history),
+              contentTurns: phaseInfo.inputs.contentTurns ?? [],
+              attachments,
+              agentDef,
+              agentModel,
+              projectDir,
+            });
+            if (!briefText) {
+              // Draft failed — hand back an editable skeleton so the flow works.
+              briefText = `HOOK: \n${Array.from(
+                { length: fcReq },
+                (_, i) => `- Khung ${i + 1}: `,
+              ).join("\n")}`;
+            }
+            const card = `Đây là nội dung mình soạn cho video — xem/sửa rồi bấm Tạo video:\n\`\`\`hv-brief\n${JSON.stringify(
+              { meta: { phase: "brief" }, brief: briefText },
+            )}\n\`\`\``;
+            // Persist the card verbatim (summaryLine stays empty so the block is
+            // not stripped) and stream it in one chunk so it renders as a card.
+            assistantText = card;
+            sseWrite({ type: "text", chunk: card });
+            sseWrite({ type: "content_ready", chars: briefText.length });
+            sseWrite({ type: "message_end", reason: "ok" });
+            process.stderr.write(
+              `[studio:msg] proj=${id} phase=brief drafted ${briefText.length}B\n`,
+            );
+          } else if (isMultiGenerate || rewriteInputs) {
             if (rewriteInputs) {
               const n =
                 (project.frames ?? []).length ||
@@ -3124,6 +3168,7 @@ type ConvPhase =
   | "format"
   | "format-edit"
   | "confirm"
+  | "brief" // draft a content brief and show it for review before generating HTML
   | "generate"
   | "iterate"
   // Post-generation iteration sub-flow:
@@ -3144,6 +3189,7 @@ interface PhaseInputs {
   pickedType?: string;
   pickedStyle?: string;
   contentTurns?: string[]; // free-text user messages between type-pick and style/format
+  approvedBrief?: string; // user-approved/edited content brief from the review card
 }
 
 /** A phase reached during post-generation iteration carries postGen=true so the
@@ -3176,6 +3222,20 @@ function detectPhase(
     inputs.pickedType = lastCardPickByPhase(history, "type");
     inputs.pickedStyle = lastCardPickByPhase(history, "style") ?? "";
     inputs.contentTurns = collectContentTurns(history);
+    // Multi-frame: draft a content brief and show it for review BEFORE HTML.
+    // Single-frame: no brief step, generate straight away.
+    const multi = Number(inputs.collected?.frame_count ?? "1") > 1;
+    return { phase: multi ? "brief" : "generate", inputs };
+  }
+  // Content-brief review card approved (possibly edited) → generate with it.
+  if (trimmed.startsWith("[hv-brief:approve]")) {
+    inputs.collected = lastFormSubmission(history);
+    inputs.pickedType = lastCardPickByPhase(history, "type");
+    inputs.pickedStyle = lastCardPickByPhase(history, "style") ?? "";
+    inputs.contentTurns = collectContentTurns(history);
+    inputs.approvedBrief = trimmed
+      .slice("[hv-brief:approve]".length)
+      .trim();
     return { phase: "generate", inputs };
   }
   if (trimmed === "[hv-confirm:edit]") {
@@ -4812,6 +4872,86 @@ interface SplitGenerateArgs {
 // (style / content / duration) and the user's pick drives restyle /
 // iterate-content / iterate-format.
 
+/**
+ * Step 0 helper — draft the video's content brief (HOOK + one point per frame)
+ * BEFORE any storyboard/HTML: expand a bare topic, or distill/organize provided
+ * knowledge. Writes content-brief.md for inspection and returns the text ("" on
+ * failure so callers fall back to the raw topic/source).
+ */
+async function draftContentBrief(opts: {
+  frameCountReq: number;
+  totalDurationSec: number;
+  pickedType: string;
+  openingTopic: string;
+  contentTurns: string[];
+  attachments: Attachment[];
+  agentDef: import("@html-video/runtime").AgentDef;
+  agentModel?: string;
+  projectDir: string;
+}): Promise<string> {
+  const {
+    frameCountReq,
+    totalDurationSec,
+    pickedType,
+    openingTopic,
+    contentTurns,
+    attachments,
+    agentDef,
+    agentModel,
+    projectDir,
+  } = opts;
+  const { content: briefAtts } = partitionAttachments(attachments);
+  const briefSources = briefAtts.filter((a) => !!a.inlineText);
+  const bp: string[] = [];
+  bp.push(
+    `You are a short-form video content writer. Produce the ACTUAL CONTENT for a ${frameCountReq}-frame, ~${totalDurationSec}s ${pickedType || "video"} — the substance, BEFORE any design or HTML.`,
+  );
+  bp.push(
+    `Output concise Markdown ONLY: a first line "HOOK: <scroll-stopping opener>", then exactly ${frameCountReq} bullet points (one per frame, in play order), each a concrete talking point. No HTML, no design/style talk, no preamble.`,
+  );
+  if (openingTopic)
+    bp.push(
+      `Subject (LOCKED — every point must be about this): "${openingTopic}".`,
+    );
+  if (contentTurns.length > 0) {
+    bp.push("User's notes:");
+    for (const t of contentTurns)
+      bp.push(`- ${t.replace(/\n/g, " ").slice(0, 280)}`);
+  }
+  if (briefSources.length > 0) {
+    bp.push(
+      "SOURCE MATERIAL — DISTILL and ORGANIZE this into the points; use its real facts / names / numbers, do NOT invent beyond it:",
+    );
+    for (const a of briefSources) {
+      bp.push(`--- ${a.filename} ---`);
+      bp.push((a.inlineText ?? "").slice(0, 6000));
+    }
+  } else {
+    bp.push(
+      "No source material provided — EXPAND the subject into concrete, useful content. Do NOT fabricate specific statistics or quotes; if unsure keep claims general and true.",
+    );
+  }
+  let brief = "";
+  try {
+    const draft = (
+      await callAgentSimple(agentDef, bp.join("\n"), projectDir, agentModel)
+    ).trim();
+    // Strip any accidental code fences the model wrapped around the markdown.
+    brief = draft.replace(/^```[a-z]*\n?|\n?```$/gi, "").trim();
+  } catch {
+    return "";
+  }
+  if (brief) {
+    try {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(join(projectDir, "content-brief.md"), brief, "utf8");
+    } catch {
+      /* non-fatal: inspection aid only */
+    }
+  }
+  return brief;
+}
+
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
@@ -4901,6 +5041,34 @@ async function runSplitMultiFrameGenerate(
         : "(let the model choose)"
       : pickedStyle;
 
+  // ---- Step 0: content brief ----
+  // The ACTUAL video content, produced BEFORE any storyboard/HTML. If the user
+  // reviewed/edited it on the brief card, reuse that verbatim; otherwise draft
+  // it now (expand a bare topic, or distill provided knowledge). Grounds Step 1
+  // so the planner works from real substance. Best-effort — empty falls back to
+  // the raw topic/source. Skipped on restyle (reuses existing storyboard text).
+  let contentBrief = inputs.approvedBrief?.trim() ?? "";
+  if (contentBrief) {
+    onProgress(`✓ Dùng nội dung đã duyệt (${contentBrief.length} ký tự)`);
+  } else if (!restyleOnly) {
+    onProgress("🧠 Soạn nội dung…");
+    contentBrief = await draftContentBrief({
+      frameCountReq,
+      totalDurationSec,
+      pickedType,
+      openingTopic: openingTopic ?? "",
+      contentTurns,
+      attachments,
+      agentDef,
+      agentModel,
+      projectDir,
+    });
+    if (contentBrief) {
+      onSse({ type: "content_ready", chars: contentBrief.length });
+      onProgress(`✓ Nội dung xong (${contentBrief.length} ký tự)`);
+    }
+  }
+
   // ---- Step 1: obtain the content graph ----
   let graph: import("@html-video/content-graph").ContentGraph;
   if (restyleOnly) {
@@ -4968,14 +5136,23 @@ async function runSplitMultiFrameGenerate(
         graphPromptParts.push((a.inlineText ?? "").slice(0, 6000));
       }
     }
+    // Step 0's content brief is the authoritative, already-organized content —
+    // one bullet per frame. Feed it so the planner maps points → nodes directly.
+    if (contentBrief) {
+      graphPromptParts.push("");
+      graphPromptParts.push(
+        "CONTENT BRIEF (authoritative — the researched/organized content for this video; build EVERY node from it, one frame per point, in order):",
+      );
+      graphPromptParts.push(contentBrief.slice(0, 8000));
+    }
     if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
     graphPromptParts.push(
       `- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`,
     );
     graphPromptParts.push("");
-    if (sourceTexts.length > 0) {
+    if (sourceTexts.length > 0 || contentBrief) {
       graphPromptParts.push(
-        `GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`,
+        `GROUNDING (REQUIRED): every node's text must come from the CONTENT BRIEF / SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`,
       );
       graphPromptParts.push("");
     }

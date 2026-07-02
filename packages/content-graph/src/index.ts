@@ -4,8 +4,7 @@
  * Structured intermediate representation produced by the agent's first round,
  * consumed by the second round to render HTML frame sequences.
  *
- * See research/2026-05-28-understand-anything-takeaways.md (#1 content-graph,
- * #4 graph-then-sort) for the design rationale.
+ * See ARCHITECTURE.md (repo root) for the design rationale.
  */
 
 export type NodeKind = "entity" | "data" | "text";

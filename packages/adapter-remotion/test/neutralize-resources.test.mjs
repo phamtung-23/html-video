@@ -1,7 +1,6 @@
 // Unit tests for neutralizeBlockingResources — the render-blocking-stylesheet
 // guard that fixed the all-black Remotion render (external Google Fonts <link>
-// kept the srcdoc iframe from painting in headless chromium). See
-// notes/2026-06-06-remotion-adapter-verify.md.
+// kept the srcdoc iframe from painting in headless chromium).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { neutralizeBlockingResources } from "../dist/render.js";

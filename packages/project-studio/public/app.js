@@ -2121,6 +2121,24 @@ function renderChatLog() {
       }
     };
   });
+  // hv-brief: approve (with any edits) → generate HTML from this content
+  log.querySelectorAll("button.brief-go[data-brief-msg]").forEach((btn) => {
+    btn.onclick = async () => {
+      const msgIdx = Number(btn.dataset.briefMsg);
+      const m = state.messages[msgIdx];
+      if (!m || m.briefApproved) return;
+      const card = btn.closest(".form-card");
+      const txt = card?.querySelector("textarea[data-brief-msg]")?.value ?? "";
+      if (!txt.trim()) {
+        toast("Nội dung đang trống", "warn");
+        return;
+      }
+      m.briefApproved = true;
+      const ta = document.getElementById("composer-input");
+      if (ta) ta.value = `[hv-brief:approve]\n${txt}`;
+      await sendMessage();
+    };
+  });
   log.querySelectorAll("[data-export-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const action = btn.dataset.exportAction;
@@ -2182,6 +2200,9 @@ function renderMessage(m, idx) {
     }
     if ((m.content ?? "").trim() === "[hv-confirm:edit]") {
       return `<div class="msg user">${iconL("edit")}${t("chat.summary.confirm_edit")}</div>`;
+    }
+    if ((m.content ?? "").startsWith("[hv-brief:approve]")) {
+      return `<div class="msg user">${iconL("check")}Đã duyệt nội dung</div>`;
     }
     return `<div class="msg user">${esc(m.content)}</div>`;
   }
@@ -2278,6 +2299,24 @@ function renderMessage(m, idx) {
     return `<div class="msg assistant">
       <div class="role">${esc(m.agent ?? "agent")}</div>
       <div class="body">${md(sanitizeAssistantProse(confirmP.prose))}${confirmHtml}</div>
+    </div>`;
+  }
+  // Content-brief review card: editable content shown BEFORE HTML generation.
+  const briefP = parseHvBrief(raw);
+  if (briefP.brief !== null) {
+    // Lock once a following user turn approved it.
+    let approved = m.briefApproved;
+    if (!approved) {
+      const nextUser = state.messages
+        .slice(idx + 1)
+        .find((x) => x.role === "user");
+      if (nextUser && (nextUser.content ?? "").startsWith("[hv-brief:approve]"))
+        approved = true;
+    }
+    const briefHtml = renderBriefCard(briefP.brief, approved, idx);
+    return `<div class="msg assistant">
+      <div class="role">${esc(m.agent ?? "agent")}</div>
+      <div class="body">${md(sanitizeAssistantProse(briefP.prose))}${briefHtml}</div>
     </div>`;
   }
   // Default: hv-options + prose
@@ -2586,6 +2625,51 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
     <div class="confirm-summary">${summaryHtml}</div>
     ${actionsHtml}
     ${resolved ? `<div class="confirm-resolved-mark">${resolved === t("card.confirm_edit") ? iconL("edit") : iconL("check")}${esc(resolved)}</div>` : ""}
+  </div>`;
+}
+
+// === hv-brief block parsing ===
+//   ```hv-brief
+//   { "meta": { "phase": "brief" }, "brief": "HOOK: …\n- …" }
+// The content drafted before HTML generation; shown editable for review.
+function parseHvBrief(text) {
+  const m = /```hv-brief\s*\n([\s\S]*?)```/i.exec(text);
+  if (!m) return { prose: text, brief: null };
+  const prose = (
+    text.slice(0, m.index) + text.slice(m.index + m[0].length)
+  ).trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(m[1].trim());
+  } catch {
+    return { prose: text, brief: null };
+  }
+  if (!parsed || typeof parsed.brief !== "string") {
+    return { prose: text, brief: null };
+  }
+  return { prose, brief: parsed.brief };
+}
+
+// === hv-brief render (editable content review) ===
+// Reuses the form-card look. The textarea carries data-brief-msg (not
+// data-form-key) so the hv-form submit wiring never picks it up.
+function renderBriefCard(brief, approved, msgIdx) {
+  if (approved) {
+    return `<div class="form-card submitted">
+      <div class="form-title">${iconL("check")}Đã duyệt nội dung</div>
+      <pre class="brief-preview" style="white-space:pre-wrap;margin:0;font:inherit">${esc(brief)}</pre>
+    </div>`;
+  }
+  return `<div class="form-card">
+    <div class="form-title">Nội dung video — xem & sửa rồi bấm Tạo video</div>
+    <div class="form-fields">
+      <div class="form-field">
+        <textarea class="brief-text" data-brief-msg="${msgIdx}" rows="12">${esc(brief)}</textarea>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="form-submit brief-go" data-brief-msg="${msgIdx}">Tạo video từ nội dung này${icon("cornerDownLeft", "ico-trail")}</button>
+    </div>
   </div>`;
 }
 

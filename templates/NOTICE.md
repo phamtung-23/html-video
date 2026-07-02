@@ -44,6 +44,37 @@ Per the MIT license:
 - We attribute the upstream URL in the template's
   `assets_attribution`.
 
+## MIT — `alchaincyf/huashu-design`
+
+These templates were transformed from the [huashu-design](https://github.com/alchaincyf/huashu-design)
+open-source slide skill (static presentation designs → animated hyperframes
+timelines rebuilt as original CSS keyframes; original sample data; no upstream
+source copied verbatim). Each template's `template.html-video.yaml` `provenance`
+block records the full three-layer origin / via_skill / transformation detail.
+
+- `frame-pentagram-stat` (L1 stylistic homage: Pentagram / Michael Bierut)
+- `frame-build-minimal` (L1 stylistic homage: Build, London design studio)
+- `frame-takram-organic` (L1 stylistic homage: Takram, Japanese design firm)
+
+Per the MIT license: Copyright © alchaincyf (花叔 · 花生). Studio names above are
+recorded as stylistic inspiration only — html-video is **not affiliated with,
+endorsed by, or sponsored by** any of them, and studio names are not used as
+template names.
+
+## MIT — `zarazhangrui/frontend-slides`
+
+These templates derive from style presets in
+[frontend-slides](https://github.com/zarazhangrui/frontend-slides) `STYLE_PRESETS.md`
+(static preset → animated hyperframes timeline built as original CSS keyframes;
+original sample data; no upstream source copied verbatim):
+
+- `frame-bold-signal` ← preset "Bold Signal"
+- `frame-creative-voltage` ← preset "Creative Voltage"
+- `frame-electric-studio` ← preset "Electric Studio"
+
+Per the MIT license: Copyright © Zara Zhang. These three are original presets
+composed by the skill author — no specific real-world studio is their origin.
+
 ## Original templates (Apache-2.0)
 
 These were authored for html-video and are licensed Apache-2.0:
