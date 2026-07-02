@@ -895,46 +895,41 @@ function renderMain() {
             <div class="text-tab-panel narration-tab" data-panel="narration" id="soundtrack-panel"${state.rightTab === 'narration' ? '' : ' hidden'}>
               <div class="soundtrack-body">
                 <div class="st-section st-narration">
-                  <div class="st-section-title">${t('soundtrack.narration_label')}</div>
-                  <!-- Step 1: write the script (text only) -->
-                  <div class="st-substep">
+                  <!-- Per-frame group: this frame's script + its draft button -->
+                  <div class="st-substep st-box-frame">
                     <div class="st-substep-head">
-                      <span class="st-step-badge">1</span>
-                      <span class="st-step-label">${t('soundtrack.step_write')}</span>
+                      <span class="st-step-label">${t('soundtrack.group_frame')}</span>
                       <span class="st-narration-which" id="st-narration-which"></span>
                     </div>
                     <textarea id="st-narration-text" rows="3" placeholder="${t('soundtrack.narration_placeholder')}"></textarea>
-                    <div class="st-draft-group">
-                      <button type="button" class="st-draft" id="btn-st-draft-frame">${iconL('sparkles')}${t('soundtrack.draft_frame')}</button>
-                      <button type="button" class="st-draft" id="btn-st-draft-all">${iconL('sparkles')}${t('soundtrack.draft_all')}</button>
-                    </div>
+                    <button type="button" class="st-draft" id="btn-st-draft-frame">${iconL('sparkles')}${t('soundtrack.draft_frame')}</button>
                   </div>
-                  <!-- Step 2: synthesize the voice (audio) -->
-                  <div class="st-substep">
+                  <!-- Global group: everything that applies to the whole video -->
+                  <div class="st-substep st-box-global">
                     <div class="st-substep-head">
-                      <span class="st-step-badge">2</span>
-                      <span class="st-step-label">${t('soundtrack.step_voice')}</span>
+                      <span class="st-step-label">${t('soundtrack.group_global')}</span>
                     </div>
+                    <button type="button" class="st-draft" id="btn-st-draft-all">${iconL('sparkles')}${t('soundtrack.draft_all')}</button>
                     <div class="st-voice-row">
                       <span class="st-voice-label">${t('soundtrack.voice_label')}</span>
                       <select id="st-narration-voice" class="st-voice-select">
                         ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t('soundtrack.voice_' + v.key)}</option>`).join('')}
                       </select>
-                      <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
                     </div>
                     <div class="st-vol-row"><label>${t('soundtrack.narration_volume')} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>
                     <div class="st-vol-row"><label>${t('soundtrack.narration_speed')} <input type="range" id="st-narration-speed" min="0.5" max="1.5" step="0.05" value="1" /><b id="st-narration-speed-val">1.00×</b></label></div>
                     <label class="st-cap-row"><input type="checkbox" id="st-narration-captions"${state.selected?.soundtrack?.captions !== false ? ' checked' : ''} /> <span>${t('soundtrack.captions')}</span></label>
+                    <button type="button" class="st-fit" id="btn-st-fit" title="${t('soundtrack.fit_hint')}">${iconL('arrowLeftRight')}${t('soundtrack.fit_durations')}</button>
                     <div class="st-section-actions">
                       <button class="st-generate" id="btn-st-gen-narration">${iconL('mic')}${t('soundtrack.gen_narration')}</button>
                       <span class="st-status" id="st-narration-status"></span>
                     </div>
                   </div>
                 </div>
+                <div class="soundtrack-preview" id="st-preview"></div>
                 <div class="soundtrack-actions">
                   <button class="st-clear" id="btn-st-clear">${t('soundtrack.clear')}</button>
                 </div>
-                <div class="soundtrack-preview" id="st-preview"></div>
               </div>
             </div>
             <!-- Tab 3: exported MP4s — review / open / delete -->
@@ -1149,6 +1144,18 @@ function wireSoundtrackPanel() {
   const draftAllBtn = document.getElementById('btn-st-draft-all');
   const whichEl = document.getElementById('st-narration-which');
 
+  // Status line under the synth button: busy = spinner, done = green + check,
+  // error = red. Plain text otherwise.
+  const setNarrStatus = (kind, text) => {
+    const el = narrationStatusEl;
+    if (!el) return;
+    el.classList.remove('is-busy', 'is-done', 'is-error');
+    if (kind === 'busy') { el.classList.add('is-busy'); el.innerHTML = `<span class="st-spinner" aria-hidden="true"></span>${esc(text)}`; }
+    else if (kind === 'done') { el.classList.add('is-done'); el.innerHTML = `${icon('check', 'ico-lead')}${esc(text)}`; }
+    else if (kind === 'error') { el.classList.add('is-error'); el.textContent = text; }
+    else el.textContent = text || '';
+  };
+
   // ---- Per-frame narration model ----------------------------------------
   // narrationByFrame: { [graphNodeId]: text }. The textarea always shows the
   // line for the CURRENTLY SELECTED frame (state.activeFrameId); editing it
@@ -1228,10 +1235,10 @@ function wireSoundtrackPanel() {
         Object.assign(state._narrationByFrame, data.narrationByFrame);
         syncNarrationField();
       } else {
-        if (narrationStatusEl) narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: data.error || `HTTP ${res.status}` });
+        setNarrStatus('error', t('soundtrack.draft_failed', { message: data.error || `HTTP ${res.status}` }));
       }
     } catch (e) {
-      if (narrationStatusEl) narrationStatusEl.textContent = t('soundtrack.draft_failed', { message: (e?.message ?? e) });
+      setNarrStatus('error', t('soundtrack.draft_failed', { message: (e?.message ?? e) }));
     } finally {
       if (btn) { btn.innerHTML = label; }
       syncNarrationField();
@@ -1277,6 +1284,8 @@ function wireSoundtrackPanel() {
     if (typeof st.narrationVolumeDb === 'number') narrationVol.value = String(st.narrationVolumeDb);
     if (typeof st.narrationSpeed === 'number' && narrationSpeed) narrationSpeed.value = String(st.narrationSpeed);
     renderSoundtrackPreview(st);
+    // A narration already exists → surface the ready state right away.
+    if (st.narrationAssetId) setNarrStatus('done', t('soundtrack.done'));
   }
   narrationVolVal.textContent = `${narrationVol.value} dB`;
   narrationVol.oninput = () => { narrationVolVal.textContent = `${narrationVol.value} dB`; };
@@ -1291,7 +1300,7 @@ function wireSoundtrackPanel() {
     await fetch(`/api/projects/${state.selected.id}/soundtrack`, { method: 'DELETE' });
     narrationText.value = '';
     previewEl.innerHTML = '';
-    if (narrationStatusEl) narrationStatusEl.textContent = '';
+    setNarrStatus('', '');
     if (state.selected) delete state.selected.soundtrack;
   };
 
@@ -1315,7 +1324,7 @@ function wireSoundtrackPanel() {
         .filter((s) => s.length > 0)
         .join('\n');
       const nt = stitched || narrationText.value.trim();
-      if (!nt) { if (statusEl) statusEl.textContent = t('soundtrack.empty_narration'); return; }
+      if (!nt) { setNarrStatus('error', t('soundtrack.empty_narration')); return; }
       const voiceSel = document.getElementById('st-narration-voice');
       const captionsChk = document.getElementById('st-narration-captions');
       payload.narration = { text: nt, volumeDb: Number(narrationVol.value), speed: Number(narrationSpeed?.value ?? 1), byFrame: state._narrationByFrame, captions: !!captionsChk?.checked, ...(voiceSel?.value && { voiceId: voiceSel.value }) };
@@ -1324,7 +1333,7 @@ function wireSoundtrackPanel() {
     const label = btn?.innerHTML;
     if (btn) btn.disabled = true;
     clearBtn.disabled = true;
-    if (statusEl) statusEl.textContent = t('soundtrack.starting');
+    setNarrStatus('busy', t('soundtrack.starting'));
 
     let res;
     try {
@@ -1334,11 +1343,11 @@ function wireSoundtrackPanel() {
         body: JSON.stringify(payload),
       });
     } catch (e) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: (e?.message ?? e) });
+      setNarrStatus('error', t('soundtrack.failed', { message: (e?.message ?? e) }));
       if (btn) btn.disabled = false; clearBtn.disabled = false; return;
     }
     if (!res.ok || !res.body) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: `HTTP ${res.status}` });
+      setNarrStatus('error', t('soundtrack.failed', { message: `HTTP ${res.status}` }));
       if (btn) btn.disabled = false; clearBtn.disabled = false; return;
     }
 
@@ -1356,19 +1365,19 @@ function wireSoundtrackPanel() {
           if (!line.startsWith('data: ')) continue;
           let ev;
           try { ev = JSON.parse(line.slice(6)); } catch { continue; }
-          if (ev.type === 'audio_progress' && statusEl) {
-            statusEl.textContent = t('soundtrack.progress_narration');
+          if (ev.type === 'audio_progress') {
+            setNarrStatus('busy', t('soundtrack.progress_narration'));
           } else if (ev.type === 'audio_done') {
-            if (statusEl) statusEl.textContent = t('soundtrack.done');
+            setNarrStatus('done', t('soundtrack.done'));
             if (ev.project) state.selected = ev.project;
             renderSoundtrackPreview(ev.soundtrack);
-          } else if (ev.type === 'audio_failed' && statusEl) {
-            statusEl.textContent = t('soundtrack.failed', { message: ev.message });
+          } else if (ev.type === 'audio_failed') {
+            setNarrStatus('error', t('soundtrack.failed', { message: ev.message }));
           }
         }
       }
     } catch (e) {
-      if (statusEl) statusEl.textContent = t('soundtrack.failed', { message: (e?.message ?? e) });
+      setNarrStatus('error', t('soundtrack.failed', { message: (e?.message ?? e) }));
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = label; }
       clearBtn.disabled = false;

@@ -1009,11 +1009,23 @@
   .narration-tab .st-section-title { font-size: 10px; letter-spacing: .12em;
     text-transform: uppercase; color: var(--text-muted); font-family: var(--font-mono);
     font-weight: 600; }
+  /* Group headers read as quiet section labels; content carries the weight. */
+  .narration-tab .st-step-label { font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+  /* Secondary actions are NEUTRAL — the one green button is "Tổng hợp giọng đọc". */
+  .narration-tab .st-draft, .narration-tab .st-fit {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+  .narration-tab .st-draft:hover:not(:disabled), .narration-tab .st-fit:hover:not(:disabled) {
+    background: var(--bg-subtle); border-color: var(--border-strong); color: var(--text); }
+  .narration-tab .st-draft { width: 100%; display: inline-flex; align-items: center;
+    justify-content: center; }
+  /* Clear = quiet, destructive on hover only. */
+  .narration-tab .st-clear { background: transparent; color: var(--text-muted);
+    border-color: transparent; font-size: 11.5px; }
+  .narration-tab .st-clear:hover:not(:disabled) { color: var(--red); background: transparent; }
   .narration-tab .st-substep { gap: 11px; padding: 14px; border-radius: var(--radius);
     background: var(--bg-subtle); border: 1px solid var(--border); }
   .narration-tab .st-substep-head { gap: 8px; }
-  .narration-tab .st-step-badge { width: 20px; height: 20px; font-size: 11px; }
-  .narration-tab .st-step-label { font-size: 12.5px; }
   .narration-tab .st-narration-which { margin-left: auto; font-size: 10.5px; font-weight: 600; }
   /* Textarea + select share one consistent input style */
   .narration-tab #st-narration-text,
@@ -1026,9 +1038,7 @@
   .narration-tab .st-voice-select:focus { outline: none; border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft); }
   /* Draft buttons — equal-width pair */
-  .narration-tab .st-draft-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 0; }
-  .narration-tab .st-draft { display: inline-flex; align-items: center; justify-content: center;
-    padding: 7px 8px; font-size: 11.5px; }
+  .narration-tab .st-draft { padding: 7px 8px; font-size: 11.5px; }
   /* Voice picker — small label above a full-width custom-chevron select */
   .narration-tab .st-voice-row { display: flex; flex-direction: column; align-items: stretch;
     gap: 6px; margin-top: 0; }
@@ -1051,6 +1061,15 @@
   .narration-tab .st-generate { width: 100%; display: inline-flex; align-items: center;
     justify-content: center; padding: 9px 16px; box-shadow: none; }
   .narration-tab .st-status { flex: none; text-align: center; }
+  /* Status states: spinner while busy, green when done, red on error. */
+  .st-spinner { width: 11px; height: 11px; border: 2px solid var(--border-strong);
+    border-top-color: var(--accent); border-radius: 50%; display: inline-block;
+    margin-right: 7px; vertical-align: -2px; animation: st-spin .7s linear infinite; }
+  @keyframes st-spin { to { transform: rotate(360deg); } }
+  .st-status.is-busy { color: var(--text); }
+  .st-status.is-done { color: var(--accent); }
+  .st-status.is-done .ico-svg { color: var(--accent); }
+  .st-status.is-error { color: var(--red); }
   /* Clear + audio preview */
   .narration-tab .soundtrack-actions { margin-top: 0; }
   .narration-tab .st-clear { width: 100%; text-align: center; }
@@ -1445,6 +1464,6 @@
   </div>
 </div>
 
-<script type="module" src="/app.js?v=0.9-quick-upload"></script>
+<script type="module" src="/app.js?v=0.9-narr-status"></script>
 </body>
 </html>
