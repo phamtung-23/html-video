@@ -8,7 +8,7 @@
  * #4 graph-then-sort) for the design rationale.
  */
 
-export type NodeKind = 'entity' | 'data' | 'text';
+export type NodeKind = "entity" | "data" | "text";
 
 export interface BaseNode {
   /** Stable id; agent picks readable strings like "intro_logo", "stat_users". */
@@ -31,7 +31,7 @@ export interface BaseNode {
 }
 
 export interface EntityNode extends BaseNode {
-  kind: 'entity';
+  kind: "entity";
   /**
    * Free-form props for branding entities (logo path, brand color, etc).
    * The frame-composer reads these to seed the HTML.
@@ -40,7 +40,7 @@ export interface EntityNode extends BaseNode {
 }
 
 export interface DataNode extends BaseNode {
-  kind: 'data';
+  kind: "data";
   /**
    * Concrete data points to visualise: numbers, percentages, time series.
    * Schema is permissive — any JSON the composer can render.
@@ -49,7 +49,7 @@ export interface DataNode extends BaseNode {
 }
 
 export interface TextNode extends BaseNode {
-  kind: 'text';
+  kind: "text";
   /**
    * Headline / quote / caption / paragraph copy.
    */
@@ -58,7 +58,7 @@ export interface TextNode extends BaseNode {
 
 export type Node = EntityNode | DataNode | TextNode;
 
-export type EdgeKind = 'sequence' | 'contrast' | 'dependency';
+export type EdgeKind = "sequence" | "contrast" | "dependency";
 
 export interface Edge {
   /** Source node id */
@@ -85,12 +85,12 @@ export interface ContentGraph {
    *   - "comparison":  before/after; contrast edges drive layout.
    */
   intent:
-    | 'single-frame'
-    | 'explainer'
-    | 'data-viz'
-    | 'promo'
-    | 'comparison'
-    | 'other';
+    | "single-frame"
+    | "explainer"
+    | "data-viz"
+    | "promo"
+    | "comparison"
+    | "other";
   /**
    * One-line synopsis the agent writes for itself / the user. Shown in
    * studio's graph view as the "what is this video about?" header.
@@ -106,13 +106,13 @@ export interface ContentGraph {
 
 export interface GraphValidationError {
   code:
-    | 'duplicate-node-id'
-    | 'edge-from-unknown-node'
-    | 'edge-to-unknown-node'
-    | 'self-edge'
-    | 'cycle'
-    | 'empty-graph'
-    | 'invalid-kind';
+    | "duplicate-node-id"
+    | "edge-from-unknown-node"
+    | "edge-to-unknown-node"
+    | "self-edge"
+    | "cycle"
+    | "empty-graph"
+    | "invalid-kind";
   message: string;
   /** Offending node or edge for UI highlighting. */
   ref?: string;
@@ -133,7 +133,7 @@ export function validate(graph: ContentGraph): GraphValidationResult {
   const warnings: GraphValidationError[] = [];
 
   if (!graph.nodes || graph.nodes.length === 0) {
-    errors.push({ code: 'empty-graph', message: 'Graph has no nodes' });
+    errors.push({ code: "empty-graph", message: "Graph has no nodes" });
     return { ok: false, errors, warnings };
   }
 
@@ -141,16 +141,16 @@ export function validate(graph: ContentGraph): GraphValidationResult {
   for (const n of graph.nodes) {
     if (ids.has(n.id)) {
       errors.push({
-        code: 'duplicate-node-id',
+        code: "duplicate-node-id",
         message: `Duplicate node id "${n.id}"`,
         ref: n.id,
       });
     }
     ids.add(n.id);
     const kind = (n as { kind: string }).kind;
-    if (kind !== 'entity' && kind !== 'data' && kind !== 'text') {
+    if (kind !== "entity" && kind !== "data" && kind !== "text") {
       errors.push({
-        code: 'invalid-kind',
+        code: "invalid-kind",
         message: `Node "${(n as { id: string }).id}" has unknown kind "${kind}"`,
         ref: (n as { id: string }).id,
       });
@@ -160,21 +160,21 @@ export function validate(graph: ContentGraph): GraphValidationResult {
   for (const e of graph.edges) {
     if (e.from === e.to) {
       errors.push({
-        code: 'self-edge',
+        code: "self-edge",
         message: `Edge ${e.from} → ${e.to} is a self-edge`,
         ref: `${e.from}->${e.to}`,
       });
     }
     if (!ids.has(e.from)) {
       errors.push({
-        code: 'edge-from-unknown-node',
+        code: "edge-from-unknown-node",
         message: `Edge from unknown node "${e.from}"`,
         ref: `${e.from}->${e.to}`,
       });
     }
     if (!ids.has(e.to)) {
       errors.push({
-        code: 'edge-to-unknown-node',
+        code: "edge-to-unknown-node",
         message: `Edge to unknown node "${e.to}"`,
         ref: `${e.from}->${e.to}`,
       });
@@ -185,7 +185,7 @@ export function validate(graph: ContentGraph): GraphValidationResult {
   const cycleNode = findDependencyCycle(graph);
   if (cycleNode) {
     errors.push({
-      code: 'cycle',
+      code: "cycle",
       message: `Dependency cycle detected involving node "${cycleNode}"`,
       ref: cycleNode,
     });
@@ -219,7 +219,7 @@ export function topoSort(graph: ContentGraph): string[] {
     nodeOrder.set(n.id, i);
   });
   for (const e of graph.edges) {
-    if (e.kind !== 'dependency') continue;
+    if (e.kind !== "dependency") continue;
     if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
     deps.get(e.from)!.push(e.to);
     indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
@@ -229,7 +229,7 @@ export function topoSort(graph: ContentGraph): string[] {
   // prefer A before B.
   const seqAfter = new Map<string, Set<string>>(); // node -> nodes that should come after
   for (const e of graph.edges) {
-    if (e.kind !== 'sequence') continue;
+    if (e.kind !== "sequence") continue;
     if (!indeg.has(e.from) || !indeg.has(e.to)) continue;
     if (!seqAfter.has(e.from)) seqAfter.set(e.from, new Set());
     seqAfter.get(e.from)!.add(e.to);
@@ -291,13 +291,13 @@ function findDependencyCycle(graph: ContentGraph): string | null {
   const adj = new Map<string, string[]>();
   for (const n of graph.nodes) adj.set(n.id, []);
   for (const e of graph.edges) {
-    if (e.kind !== 'dependency') continue;
+    if (e.kind !== "dependency") continue;
     if (!adj.has(e.from) || !adj.has(e.to)) continue;
     adj.get(e.from)!.push(e.to);
   }
-  const WHITE = 0,
-    GRAY = 1,
-    BLACK = 2;
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
   const color = new Map<string, number>();
   for (const id of adj.keys()) color.set(id, WHITE);
   const stack: { id: string; iter: Iterator<string> }[] = [];
@@ -316,7 +316,10 @@ function findDependencyCycle(graph: ContentGraph): string | null {
         if (c === GRAY) return next.value;
         if (c === WHITE) {
           color.set(next.value, GRAY);
-          stack.push({ id: next.value, iter: adj.get(next.value)![Symbol.iterator]() });
+          stack.push({
+            id: next.value,
+            iter: adj.get(next.value)![Symbol.iterator](),
+          });
         }
       }
     }

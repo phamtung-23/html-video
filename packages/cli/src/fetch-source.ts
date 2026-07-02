@@ -16,13 +16,13 @@ const ARTICLE_MAX = 8_000; // chars of markdown kept from an article
 const README_MAX = 10_000; // chars of README kept from a repo
 const FETCH_TIMEOUT_MS = 12_000;
 const UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 export interface FetchedSource {
   url: string;
   title: string;
   markdown: string;
-  kind: 'article' | 'repo';
+  kind: "article" | "repo";
   truncated: boolean;
 }
 
@@ -34,7 +34,7 @@ export function extractUrls(text: string, max = 3): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(re)) {
     // Trim common trailing punctuation that isn't part of the URL.
-    const u = m[0].replace(/[.,;:!?]+$/, '');
+    const u = m[0].replace(/[.,;:!?]+$/, "");
     if (!seen.has(u)) {
       seen.add(u);
       out.push(u);
@@ -55,17 +55,17 @@ export function assertPublicHttpUrl(raw: string): URL {
   } catch {
     throw new Error(`invalid URL: ${raw}`);
   }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
     throw new Error(`only http(s) URLs are allowed (got ${u.protocol})`);
   }
   const host = u.hostname.toLowerCase();
   if (
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host.endsWith('.localhost') ||
-    host.endsWith('.internal') ||
-    host.endsWith('.local')
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local")
   ) {
     throw new Error(`refusing to fetch local host: ${host}`);
   }
@@ -88,7 +88,10 @@ export function assertPublicHttpUrl(raw: string): URL {
 }
 
 /** Dispatch: GitHub repo URL → repo summary, anything else → article. */
-export async function fetchSource(rawUrl: string, signal?: AbortSignal): Promise<FetchedSource> {
+export async function fetchSource(
+  rawUrl: string,
+  signal?: AbortSignal,
+): Promise<FetchedSource> {
   const u = assertPublicHttpUrl(rawUrl);
   const repo = parseGithubRepo(u);
   if (repo) return fetchRepo(repo.owner, repo.repo, rawUrl, signal);
@@ -99,14 +102,21 @@ export async function fetchSource(rawUrl: string, signal?: AbortSignal): Promise
 // Article
 // --------------------------------------------------------------------------
 
-async function fetchArticle(url: string, signal?: AbortSignal): Promise<FetchedSource> {
-  const html = await fetchText(url, { accept: 'text/html,application/xhtml+xml' }, signal);
+async function fetchArticle(
+  url: string,
+  signal?: AbortSignal,
+): Promise<FetchedSource> {
+  const html = await fetchText(
+    url,
+    { accept: "text/html,application/xhtml+xml" },
+    signal,
+  );
   const title = extractTitle(html);
   let body = htmlToMarkdown(extractMainHtml(html));
   const truncated = body.length > ARTICLE_MAX;
   if (truncated) body = body.slice(0, ARTICLE_MAX);
   const markdown = `# ${title || url}\n\nSource: ${url}\n\n${body}`.trim();
-  return { url, title, markdown, kind: 'article', truncated };
+  return { url, title, markdown, kind: "article", truncated };
 }
 
 /** Extract the inner HTML of the first element matching `openTagRe`, scanning
@@ -115,11 +125,15 @@ async function fetchArticle(url: string, signal?: AbortSignal): Promise<FetchedS
  *  `(.*?)</tag>` regex collapses on deeply-nested markup (e.g. WeChat's
  *  #js_content wraps hundreds of nested <div>/<section>), which is why the
  *  old single-regex approach returned an almost-empty body. */
-function extractBalanced(html: string, tag: string, openTagRe: RegExp): string | null {
+function extractBalanced(
+  html: string,
+  tag: string,
+  openTagRe: RegExp,
+): string | null {
   const m = openTagRe.exec(html);
   if (!m) return null;
   const start = m.index + m[0].length;
-  const tagRe = new RegExp(`<(/)?${tag}\\b[^>]*>`, 'gi');
+  const tagRe = new RegExp(`<(/)?${tag}\\b[^>]*>`, "gi");
   tagRe.lastIndex = start;
   let depth = 1;
   let t: RegExpExecArray | null;
@@ -139,11 +153,15 @@ function extractBalanced(html: string, tag: string, openTagRe: RegExp): string |
 function extractMainHtml(html: string): string {
   // WeChat official-account articles are server-rendered into #js_content
   // (class attribute precedes id, and the open tag spans newlines).
-  const wx = extractBalanced(html, 'div', /<div[^>]*\bid=["']js_content["'][^>]*>/i);
+  const wx = extractBalanced(
+    html,
+    "div",
+    /<div[^>]*\bid=["']js_content["'][^>]*>/i,
+  );
   if (wx && wx.length > 200) return wx;
-  const article = extractBalanced(html, 'article', /<article[^>]*>/i);
+  const article = extractBalanced(html, "article", /<article[^>]*>/i);
   if (article && article.length > 200) return article;
-  const main = extractBalanced(html, 'main', /<main[^>]*>/i);
+  const main = extractBalanced(html, "main", /<main[^>]*>/i);
   if (main && main.length > 200) return main;
   // Fall back to <body> so we don't carry <head> noise.
   const bodyM = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -151,10 +169,12 @@ function extractMainHtml(html: string): string {
 }
 
 function extractTitle(html: string): string {
-  const og = html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+  const og = html.match(
+    /<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+  );
   if (og && og[1]) return decodeEntities(og[1]).trim();
   const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return t && t[1] ? decodeEntities(t[1]).replace(/\s+/g, ' ').trim() : '';
+  return t && t[1] ? decodeEntities(t[1]).replace(/\s+/g, " ").trim() : "";
 }
 
 /** Lean, dependency-free HTML→Markdown. Not a full converter — just enough to
@@ -162,57 +182,84 @@ function extractTitle(html: string): string {
 export function htmlToMarkdown(html: string): string {
   let s = html;
   // Drop non-content elements entirely.
-  s = s.replace(/<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi, '');
-  s = s.replace(/<!--[\s\S]*?-->/g, '');
+  s = s.replace(
+    /<(script|style|noscript|svg|head|nav|footer|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi,
+    "",
+  );
+  s = s.replace(/<!--[\s\S]*?-->/g, "");
   // Block-ish → newlines / markers.
-  s = s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, lvl, inner) => `\n\n${'#'.repeat(Number(lvl))} ${strip(inner)}\n`);
-  s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner) => `\n- ${strip(inner)}`);
-  s = s.replace(/<(p|div|section|article|tr|h[1-6]|ul|ol|blockquote)[^>]*>/gi, '\n');
-  s = s.replace(/<\/(p|div|section|article|tr|li|ul|ol|blockquote)>/gi, '\n');
-  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(
+    /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi,
+    (_m, lvl, inner) => `\n\n${"#".repeat(Number(lvl))} ${strip(inner)}\n`,
+  );
+  s = s.replace(
+    /<li[^>]*>([\s\S]*?)<\/li>/gi,
+    (_m, inner) => `\n- ${strip(inner)}`,
+  );
+  s = s.replace(
+    /<(p|div|section|article|tr|h[1-6]|ul|ol|blockquote)[^>]*>/gi,
+    "\n",
+  );
+  s = s.replace(/<\/(p|div|section|article|tr|li|ul|ol|blockquote)>/gi, "\n");
+  s = s.replace(/<br\s*\/?>/gi, "\n");
   // Inline: links + images keep their target.
-  s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, inner) => {
-    const text = strip(inner);
-    return text ? `[${text}](${href})` : '';
-  });
-  s = s.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, alt, src) => `![${alt}](${src})`);
-  s = s.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, src) => `![](${src})`);
+  s = s.replace(
+    /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+    (_m, href, inner) => {
+      const text = strip(inner);
+      return text ? `[${text}](${href})` : "";
+    },
+  );
+  s = s.replace(
+    /<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (_m, alt, src) => `![${alt}](${src})`,
+  );
+  s = s.replace(
+    /<img[^>]*src=["']([^"']+)["'][^>]*>/gi,
+    (_m, src) => `![](${src})`,
+  );
   // Strip every remaining tag.
-  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/<[^>]+>/g, "");
   s = decodeEntities(s);
   // Collapse whitespace: trim each line, drop 3+ blank lines.
   s = s
-    .split('\n')
-    .map((l) => l.replace(/[ \t ]+/g, ' ').trimEnd())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
+    .split("\n")
+    .map((l) => l.replace(/[ \t ]+/g, " ").trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
   return s;
 }
 
 /** Strip tags + decode entities + collapse spaces (for inline fragments). */
 function strip(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]+>/g, ""))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function decodeEntities(s: string): string {
   return s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => safeCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(parseInt(d, 10)));
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) =>
+      safeCodePoint(Number.parseInt(h, 16)),
+    )
+    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(Number.parseInt(d, 10)));
 }
 
 function safeCodePoint(n: number): string {
   try {
-    return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '';
+    return Number.isFinite(n) && n > 0 && n <= 0x10ffff
+      ? String.fromCodePoint(n)
+      : "";
   } catch {
-    return '';
+    return "";
   }
 }
 
@@ -221,19 +268,35 @@ function safeCodePoint(n: number): string {
 // --------------------------------------------------------------------------
 
 function parseGithubRepo(u: URL): { owner: string; repo: string } | null {
-  if (u.hostname.toLowerCase() !== 'github.com') return null;
-  const parts = u.pathname.split('/').filter(Boolean);
+  if (u.hostname.toLowerCase() !== "github.com") return null;
+  const parts = u.pathname.split("/").filter(Boolean);
   if (parts.length < 2) return null;
   // Skip non-repo paths (search, marketplace, etc. have reserved first segments,
   // but a 2-segment owner/repo is the common case; reject known non-repo roots).
-  const reserved = new Set(['search', 'marketplace', 'topics', 'collections', 'sponsors', 'about', 'features']);
+  const reserved = new Set([
+    "search",
+    "marketplace",
+    "topics",
+    "collections",
+    "sponsors",
+    "about",
+    "features",
+  ]);
   if (reserved.has(parts[0]!.toLowerCase())) return null;
-  return { owner: parts[0]!, repo: parts[1]!.replace(/\.git$/, '') };
+  return { owner: parts[0]!, repo: parts[1]!.replace(/\.git$/, "") };
 }
 
-async function fetchRepo(owner: string, repo: string, url: string, signal?: AbortSignal): Promise<FetchedSource> {
+async function fetchRepo(
+  owner: string,
+  repo: string,
+  url: string,
+  signal?: AbortSignal,
+): Promise<FetchedSource> {
   const api = `https://api.github.com/repos/${owner}/${repo}`;
-  const ghHeaders = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
+  const ghHeaders = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+  };
 
   // Repo metadata (required — fails loudly if repo is private/missing).
   const metaRaw = await fetchText(api, ghHeaders, signal);
@@ -248,31 +311,43 @@ async function fetchRepo(owner: string, repo: string, url: string, signal?: Abor
   };
 
   // README (raw) + top-level tree — best-effort, don't fail the whole thing.
-  const readme = await fetchText(`${api}/readme`, { ...ghHeaders, accept: 'application/vnd.github.raw' }, signal).catch(
-    () => '',
+  const readme = await fetchText(
+    `${api}/readme`,
+    { ...ghHeaders, accept: "application/vnd.github.raw" },
+    signal,
+  ).catch(() => "");
+  const tree = await fetchTopLevelTree(api, ghHeaders, signal).catch(
+    () => [] as string[],
   );
-  const tree = await fetchTopLevelTree(api, ghHeaders, signal).catch(() => [] as string[]);
 
   const title = meta.full_name || `${owner}/${repo}`;
-  const lines: string[] = [`# ${title}`, '', `Source: ${url}`, ''];
-  if (meta.description) lines.push(`> ${meta.description}`, '');
+  const lines: string[] = [`# ${title}`, "", `Source: ${url}`, ""];
+  if (meta.description) lines.push(`> ${meta.description}`, "");
   const facts: string[] = [];
   if (meta.language) facts.push(`Language: ${meta.language}`);
-  if (typeof meta.stargazers_count === 'number') facts.push(`Stars: ${meta.stargazers_count.toLocaleString('en-US')}`);
-  if (meta.license?.spdx_id && meta.license.spdx_id !== 'NOASSERTION') facts.push(`License: ${meta.license.spdx_id}`);
+  if (typeof meta.stargazers_count === "number")
+    facts.push(`Stars: ${meta.stargazers_count.toLocaleString("en-US")}`);
+  if (meta.license?.spdx_id && meta.license.spdx_id !== "NOASSERTION")
+    facts.push(`License: ${meta.license.spdx_id}`);
   if (meta.homepage) facts.push(`Homepage: ${meta.homepage}`);
-  if (meta.topics?.length) facts.push(`Topics: ${meta.topics.join(', ')}`);
-  if (facts.length) lines.push(...facts.map((f) => `- ${f}`), '');
+  if (meta.topics?.length) facts.push(`Topics: ${meta.topics.join(", ")}`);
+  if (facts.length) lines.push(...facts.map((f) => `- ${f}`), "");
   if (tree.length) {
-    lines.push('## Top-level structure', '', ...tree.map((t) => `- ${t}`), '');
+    lines.push("## Top-level structure", "", ...tree.map((t) => `- ${t}`), "");
   }
 
   let readmeMd = readme.trim();
   const truncated = readmeMd.length > README_MAX;
   if (truncated) readmeMd = readmeMd.slice(0, README_MAX);
-  if (readmeMd) lines.push('## README', '', readmeMd);
+  if (readmeMd) lines.push("## README", "", readmeMd);
 
-  return { url, title, markdown: lines.join('\n').trim(), kind: 'repo', truncated };
+  return {
+    url,
+    title,
+    markdown: lines.join("\n").trim(),
+    kind: "repo",
+    truncated,
+  };
 }
 
 async function fetchTopLevelTree(
@@ -285,18 +360,22 @@ async function fetchTopLevelTree(
   return items
     .filter((i) => i.name)
     .slice(0, 40)
-    .map((i) => (i.type === 'dir' ? `${i.name}/` : i.name!));
+    .map((i) => (i.type === "dir" ? `${i.name}/` : i.name!));
 }
 
 // --------------------------------------------------------------------------
 // shared fetch
 // --------------------------------------------------------------------------
 
-async function fetchText(url: string, extraHeaders: Record<string, string>, signal?: AbortSignal): Promise<string> {
+async function fetchText(
+  url: string,
+  extraHeaders: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<string> {
   assertPublicHttpUrl(url);
   const res = await fetch(url, {
-    headers: { 'user-agent': UA, ...extraHeaders },
-    redirect: 'follow',
+    headers: { "user-agent": UA, ...extraHeaders },
+    redirect: "follow",
     signal: signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {

@@ -7,10 +7,10 @@
  * - exportMp4: 调 EngineAdapter.render() → MP4 file
  */
 
-import { randomUUID } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, basename } from "node:path";
 import type {
   Asset,
   EngineId,
@@ -19,23 +19,27 @@ import type {
   ProjectStatus,
   TemplateMetadata,
   TemplateRef,
-} from './types/index.js';
+} from "./types/index.js";
 import {
   type ContentGraph,
   validate as validateGraph,
   topoSort,
   DEFAULT_FRAME_DURATION_SEC,
-} from '@html-video/content-graph';
-import { HtmlVideoError } from './errors.js';
-import { buildCaptionAss } from './subtitles.js';
-import { ffmpegBin, ffprobeBin } from './ffmpeg.js';
-import type { AssetStore } from './asset-store.js';
-import type { EngineRegistry, ProjectStore, TemplateRegistry } from './registry.js';
+} from "@html-video/content-graph";
+import { HtmlVideoError } from "./errors.js";
+import { buildCaptionAss } from "./subtitles.js";
+import { ffmpegBin, ffprobeBin } from "./ffmpeg.js";
+import type { AssetStore } from "./asset-store.js";
+import type {
+  EngineRegistry,
+  ProjectStore,
+  TemplateRegistry,
+} from "./registry.js";
 
 export interface CreateProjectInput {
   name: string;
   intent?: string;
-  preferences?: Project['preferences'];
+  preferences?: Project["preferences"];
 }
 
 export interface ProjectOrchestratorDeps {
@@ -62,7 +66,7 @@ export class ProjectOrchestrator {
       templateId: null,
       variables: {},
       preferences: input.preferences ?? {},
-      status: 'draft',
+      status: "draft",
       createdAt: now,
       updatedAt: now,
     };
@@ -84,14 +88,23 @@ export class ProjectOrchestrator {
 
   // ---------------- Asset ops ----------------
 
-  async addFileAsset(projectId: string, sourcePath: string, userCaption?: string): Promise<Project> {
+  async addFileAsset(
+    projectId: string,
+    sourcePath: string,
+    userCaption?: string,
+  ): Promise<Project> {
     await this.deps.projects.ensureDir(projectId);
     const project = await this.deps.projects.load(projectId);
-    const asset = await this.deps.assets.addFileAsset(projectId, sourcePath, [], userCaption);
+    const asset = await this.deps.assets.addFileAsset(
+      projectId,
+      sourcePath,
+      [],
+      userCaption,
+    );
     if (!project.assets.find((a) => a.id === asset.id)) {
       project.assets.push(asset);
     }
-    project.status = downgradeStatus(project.status, 'draft');
+    project.status = downgradeStatus(project.status, "draft");
     await this.deps.projects.save(project);
     return project;
   }
@@ -99,16 +112,22 @@ export class ProjectOrchestrator {
   async addInlineAsset(
     projectId: string,
     content: string,
-    type: 'text' | 'data',
+    type: "text" | "data",
     userCaption?: string,
   ): Promise<Project> {
     await this.deps.projects.ensureDir(projectId);
     const project = await this.deps.projects.load(projectId);
-    const asset = await this.deps.assets.addInlineAsset(projectId, content, type, [], userCaption);
+    const asset = await this.deps.assets.addInlineAsset(
+      projectId,
+      content,
+      type,
+      [],
+      userCaption,
+    );
     if (!project.assets.find((a) => a.id === asset.id)) {
       project.assets.push(asset);
     }
-    project.status = downgradeStatus(project.status, 'draft');
+    project.status = downgradeStatus(project.status, "draft");
     await this.deps.projects.save(project);
     return project;
   }
@@ -127,7 +146,13 @@ export class ProjectOrchestrator {
   ): Promise<{ project: Project; asset: Asset }> {
     await this.deps.projects.ensureDir(projectId);
     const project = await this.deps.projects.load(projectId);
-    const asset = await this.deps.assets.addBufferAsset(projectId, bytes, ext, [], userCaption);
+    const asset = await this.deps.assets.addBufferAsset(
+      projectId,
+      bytes,
+      ext,
+      [],
+      userCaption,
+    );
     if (!project.assets.find((a) => a.id === asset.id)) {
       project.assets.push(asset);
     }
@@ -144,37 +169,54 @@ export class ProjectOrchestrator {
 
   // ---------------- Template / variables ----------------
 
-  async setTemplate(projectId: string, templateId: string | null): Promise<Project> {
+  async setTemplate(
+    projectId: string,
+    templateId: string | null,
+  ): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     if (templateId !== null && !this.deps.templates.has(templateId)) {
-      throw new HtmlVideoError('template-not-found', `Template ${templateId} not found`);
+      throw new HtmlVideoError(
+        "template-not-found",
+        `Template ${templateId} not found`,
+      );
     }
     project.templateId = templateId;
     // v0.3: variables are no longer the user-facing surface. Reset on every
     // template change so old keys don't bleed through into the new context.
     project.variables = {};
-    project.status = downgradeStatus(project.status, 'draft');
+    project.status = downgradeStatus(project.status, "draft");
     await this.deps.projects.save(project);
     return project;
   }
 
-  async setVariables(projectId: string, vars: Record<string, unknown>): Promise<Project> {
+  async setVariables(
+    projectId: string,
+    vars: Record<string, unknown>,
+  ): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     project.variables = vars;
-    project.status = downgradeStatus(project.status, 'draft');
+    project.status = downgradeStatus(project.status, "draft");
     await this.deps.projects.save(project);
     return project;
   }
 
-  async setVariable(projectId: string, key: string, value: unknown): Promise<Project> {
+  async setVariable(
+    projectId: string,
+    key: string,
+    value: unknown,
+  ): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     project.variables = { ...project.variables, [key]: value };
-    project.status = downgradeStatus(project.status, 'draft');
+    project.status = downgradeStatus(project.status, "draft");
     await this.deps.projects.save(project);
     return project;
   }
 
-  async setAgent(projectId: string, agentId: string | null, agentModel?: string | null): Promise<Project> {
+  async setAgent(
+    projectId: string,
+    agentId: string | null,
+    agentModel?: string | null,
+  ): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     project.agentId = agentId;
     // Only touch the model when explicitly provided; switching agent clears a
@@ -189,13 +231,16 @@ export class ProjectOrchestrator {
    * v0.3 chat-to-HTML: write raw HTML produced by an agent into the project's preview slot.
    * Single-frame fast-path. Clears any prior multi-frame graph state.
    */
-  async writePreviewHtmlRaw(projectId: string, html: string): Promise<{ project: Project; htmlPath: string }> {
+  async writePreviewHtmlRaw(
+    projectId: string,
+    html: string,
+  ): Promise<{ project: Project; htmlPath: string }> {
     const project = await this.deps.projects.load(projectId);
     const projectDir = await this.deps.projects.ensureDir(projectId);
-    const { writeFile } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const htmlPath = join(projectDir, 'preview.html');
-    await writeFile(htmlPath, html, 'utf8');
+    const { writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const htmlPath = join(projectDir, "preview.html");
+    await writeFile(htmlPath, html, "utf8");
     project.lastPreviewHtmlPath = htmlPath;
     // v0.8.2: only treat this as a "supersedes the storyboard" event for
     // truly fresh single-frame projects (no frames yet). For projects that
@@ -209,7 +254,7 @@ export class ProjectOrchestrator {
       project.frames = [];
       delete project.contentGraphPath;
     }
-    if (project.status === 'draft') project.status = 'previewed';
+    if (project.status === "draft") project.status = "previewed";
     await this.deps.projects.save(project);
     return { project, htmlPath };
   }
@@ -228,18 +273,18 @@ export class ProjectOrchestrator {
     const result = validateGraph(graph);
     if (!result.ok) {
       throw new HtmlVideoError(
-        'invalid-input',
-        `ContentGraph invalid: ${result.errors.map((e) => e.message).join('; ')}`,
+        "invalid-input",
+        `ContentGraph invalid: ${result.errors.map((e) => e.message).join("; ")}`,
       );
     }
     const project = await this.deps.projects.load(projectId);
     const projectDir = await this.deps.projects.ensureDir(projectId);
-    const { writeFile, mkdir } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const graphPath = join(projectDir, 'content-graph.json');
-    await writeFile(graphPath, JSON.stringify(graph, null, 2), 'utf8');
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const graphPath = join(projectDir, "content-graph.json");
+    await writeFile(graphPath, JSON.stringify(graph, null, 2), "utf8");
     project.contentGraphPath = graphPath;
-    await mkdir(join(projectDir, 'frames'), { recursive: true });
+    await mkdir(join(projectDir, "frames"), { recursive: true });
     if (opts.preserveFrames) {
       // Editing an existing storyboard's metadata (e.g. re-pacing durations) —
       // keep the rendered frames, just sync each frame's durationSec from the
@@ -252,7 +297,7 @@ export class ProjectOrchestrator {
     } else {
       // Fresh graph → agent will re-emit per-frame HTML; drop stale frames.
       project.frames = [];
-      if (project.status !== 'rendered') project.status = 'draft';
+      if (project.status !== "rendered") project.status = "draft";
     }
     await this.deps.projects.save(project);
     return { project, graphPath };
@@ -264,10 +309,12 @@ export class ProjectOrchestrator {
   async readContentGraph(projectId: string): Promise<ContentGraph | null> {
     const project = await this.deps.projects.load(projectId);
     if (!project.contentGraphPath) return null;
-    const { readFile } = await import('node:fs/promises');
-    const { existsSync } = await import('node:fs');
+    const { readFile } = await import("node:fs/promises");
+    const { existsSync } = await import("node:fs");
     if (!existsSync(project.contentGraphPath)) return null;
-    return JSON.parse(await readFile(project.contentGraphPath, 'utf8')) as ContentGraph;
+    return JSON.parse(
+      await readFile(project.contentGraphPath, "utf8"),
+    ) as ContentGraph;
   }
 
   /**
@@ -285,29 +332,29 @@ export class ProjectOrchestrator {
     const graph = await this.readContentGraph(projectId);
     if (!graph) {
       throw new HtmlVideoError(
-        'invalid-input',
-        'Cannot write frame: project has no content graph yet',
+        "invalid-input",
+        "Cannot write frame: project has no content graph yet",
       );
     }
     const order = topoSort(graph);
     const idx = order.indexOf(graphNodeId);
     if (idx === -1) {
       throw new HtmlVideoError(
-        'invalid-input',
+        "invalid-input",
         `Graph node "${graphNodeId}" not found in content graph`,
       );
     }
     const node = graph.nodes.find((n) => n.id === graphNodeId)!;
 
     const projectDir = await this.deps.projects.ensureDir(projectId);
-    const { writeFile, mkdir } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const framesDir = join(projectDir, 'frames');
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const framesDir = join(projectDir, "frames");
     await mkdir(framesDir, { recursive: true });
-    const safeId = graphNodeId.replace(/[^a-z0-9_-]/gi, '_');
-    const filename = `${String(idx + 1).padStart(2, '0')}-${safeId}.html`;
+    const safeId = graphNodeId.replace(/[^a-z0-9_-]/gi, "_");
+    const filename = `${String(idx + 1).padStart(2, "0")}-${safeId}.html`;
     const htmlPath = join(framesDir, filename);
-    await writeFile(htmlPath, html, 'utf8');
+    await writeFile(htmlPath, html, "utf8");
 
     const frame: FrameRecord = {
       graphNodeId,
@@ -315,30 +362,37 @@ export class ProjectOrchestrator {
       durationSec: node.durationSec ?? DEFAULT_FRAME_DURATION_SEC,
       order: idx,
     };
-    project.frames = (project.frames ?? []).filter((f) => f.graphNodeId !== graphNodeId);
+    project.frames = (project.frames ?? []).filter(
+      (f) => f.graphNodeId !== graphNodeId,
+    );
     project.frames.push(frame);
     project.frames.sort((a, b) => a.order - b.order);
     // First frame becomes the project preview when no single-frame HTML exists.
     if (project.frames[0]?.graphNodeId === graphNodeId) {
       project.lastPreviewHtmlPath = htmlPath;
     }
-    if (project.status === 'draft') project.status = 'previewed';
+    if (project.status === "draft") project.status = "previewed";
     await this.deps.projects.save(project);
     return { project, frame };
   }
 
   // ---------------- Render: preview HTML / export MP4 ----------------
 
-  async renderPreviewHtml(projectId: string): Promise<{ project: Project; htmlPath: string }> {
+  async renderPreviewHtml(
+    projectId: string,
+  ): Promise<{ project: Project; htmlPath: string }> {
     const project = await this.deps.projects.load(projectId);
     if (!project.templateId) {
-      throw new HtmlVideoError('invalid-input', 'Project has no template selected');
+      throw new HtmlVideoError(
+        "invalid-input",
+        "Project has no template selected",
+      );
     }
     const tmpl = this.deps.templates.get(project.templateId);
     const adapter = this.deps.engines.get(tmpl.engine);
     if (!adapter.renderToHtml) {
       throw new HtmlVideoError(
-        'render-failed',
+        "render-failed",
         `Engine ${tmpl.engine} adapter does not support renderToHtml()`,
       );
     }
@@ -349,11 +403,14 @@ export class ProjectOrchestrator {
         template: templateRefFromMeta(tmpl),
         variables: project.variables,
         config: {
-          format: 'mp4',
-          resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
+          format: "mp4",
+          resolution: project.preferences.resolution ?? {
+            width: 1920,
+            height: 1080,
+          },
           fps: project.preferences.fps ?? 60,
-          duration: 'auto',
-          outputPath: join(projectDir, 'output.mp4'),
+          duration: "auto",
+          outputPath: join(projectDir, "output.mp4"),
         },
       },
       { workDir: projectDir },
@@ -361,7 +418,7 @@ export class ProjectOrchestrator {
 
     project.lastPreviewHtmlPath = out.htmlPath;
     project.lastPreviewPosterPath = out.posterPath;
-    if (project.status === 'draft') project.status = 'previewed';
+    if (project.status === "draft") project.status = "previewed";
     await this.deps.projects.save(project);
     return { project, htmlPath: out.htmlPath };
   }
@@ -377,41 +434,61 @@ export class ProjectOrchestrator {
     // Unique per-export filename so repeated exports of the SAME project don't
     // overwrite each other (different projects already have separate dirs).
     // output.mp4 stays as a stable "latest" alias updated after each export.
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-    const outputPath = args.outputPath ?? join(projectDir, `output-${stamp}.mp4`);
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .slice(0, 19);
+    const outputPath =
+      args.outputPath ?? join(projectDir, `output-${stamp}.mp4`);
 
     // v0.8: multi-frame path. If the project has frames[] from a content graph,
     // render each frame's HTML to a per-frame MP4, then ffmpeg concat them.
     if (project.frames && project.frames.length > 0) {
       const ordered = [...project.frames].sort((a, b) => a.order - b.order);
-      const tmpl = project.templateId ? this.deps.templates.get(project.templateId) : null;
-      const projectEngine = tmpl?.engine ?? 'hyperframes';
+      const tmpl = project.templateId
+        ? this.deps.templates.get(project.templateId)
+        : null;
+      const projectEngine = tmpl?.engine ?? "hyperframes";
       const frameMp4s: string[] = [];
       // Mixed engines across frames → the per-frame MP4s may carry different
       // h264 params (hyperframes' libx264 vs Remotion's encoder), so a stream
       // -c copy concat can stutter/corrupt. Re-encode the join in that case.
-      const enginesUsed = new Set(ordered.map((f) => f.engine ?? projectEngine));
+      const enginesUsed = new Set(
+        ordered.map((f) => f.engine ?? projectEngine),
+      );
       const reencode = enginesUsed.size > 1;
 
       for (let i = 0; i < ordered.length; i++) {
         const f = ordered[i]!;
-        const frameOut = join(projectDir, 'frames', `${String(i + 1).padStart(2, '0')}.mp4`);
-        const { engine: frameEngine, templateRef } = this.resolveFrameTemplateRef(f, projectEngine);
+        const frameOut = join(
+          projectDir,
+          "frames",
+          `${String(i + 1).padStart(2, "0")}.mp4`,
+        );
+        const { engine: frameEngine, templateRef } =
+          this.resolveFrameTemplateRef(f, projectEngine);
         const adapter = this.deps.engines.get(frameEngine);
         await adapter.render(
           {
             template: templateRef,
             // Native data templates read `data` from variables; bridge/hyperframes
             // ignore it. Frame's own data (when enhanced) overrides project vars.
-            variables: f.data !== undefined ? { ...project.variables, data: f.data } : project.variables,
+            variables:
+              f.data !== undefined
+                ? { ...project.variables, data: f.data }
+                : project.variables,
             config: {
-              format: 'mp4',
-              resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
+              format: "mp4",
+              resolution: project.preferences.resolution ?? {
+                width: 1920,
+                height: 1080,
+              },
               fps: project.preferences.fps ?? 60,
               duration: f.durationSec,
               // The user set per-frame length on the format card — honor it as a
               // hard cap so one runaway animation can't stretch a 4s frame to ~30s.
-              durationMode: 'explicit',
+              durationMode: "explicit",
               outputPath: frameOut,
             },
           },
@@ -419,7 +496,10 @@ export class ProjectOrchestrator {
             workDir: projectDir,
             ...(args.onProgress !== undefined && {
               onProgress: (pct, stage) =>
-                args.onProgress!((i + pct / 100) / ordered.length * 100, `frame ${i + 1}/${ordered.length}: ${stage}`),
+                args.onProgress!(
+                  ((i + pct / 100) / ordered.length) * 100,
+                  `frame ${i + 1}/${ordered.length}: ${stage}`,
+                ),
             }),
             ...(args.signal !== undefined && { signal: args.signal }),
           },
@@ -432,17 +512,25 @@ export class ProjectOrchestrator {
         fps: project.preferences.fps ?? 60,
       });
       const totalDur = ordered.reduce((s, f) => s + (f.durationSec || 0), 0);
-      await this.applySoundtrack(project, outputPath, totalDur, args.onProgress);
+      await this.applySoundtrack(
+        project,
+        outputPath,
+        totalDur,
+        args.onProgress,
+      );
       project.lastOutputMp4Path = outputPath;
       recordExport(project, outputPath);
-      project.status = 'rendered';
+      project.status = "rendered";
       await this.deps.projects.save(project);
       return { project, outputPath };
     }
 
     // Single-frame fast path (v0.7 behaviour).
     if (!project.templateId) {
-      throw new HtmlVideoError('invalid-input', 'Project has no template selected');
+      throw new HtmlVideoError(
+        "invalid-input",
+        "Project has no template selected",
+      );
     }
     const tmpl = this.deps.templates.get(project.templateId);
     const adapter = this.deps.engines.get(tmpl.engine);
@@ -452,10 +540,13 @@ export class ProjectOrchestrator {
         template: templateRefFromMeta(tmpl),
         variables: project.variables,
         config: {
-          format: 'mp4',
-          resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
+          format: "mp4",
+          resolution: project.preferences.resolution ?? {
+            width: 1920,
+            height: 1080,
+          },
           fps: project.preferences.fps ?? 60,
-          duration: 'auto',
+          duration: "auto",
           outputPath,
         },
       },
@@ -468,7 +559,7 @@ export class ProjectOrchestrator {
     await this.applySoundtrack(project, outputPath, undefined, args.onProgress);
     project.lastOutputMp4Path = outputPath;
     recordExport(project, outputPath);
-    project.status = 'rendered';
+    project.status = "rendered";
     await this.deps.projects.save(project);
     return { project, outputPath };
   }
@@ -484,27 +575,27 @@ export class ProjectOrchestrator {
     f: FrameRecord,
     projectEngine: EngineId,
   ): { engine: EngineId; templateRef: TemplateRef } {
-    if (f.engine === 'remotion' && f.nativeTemplateId) {
+    if (f.engine === "remotion" && f.nativeTemplateId) {
       const nt = this.deps.templates.get(f.nativeTemplateId);
       if (!nt.native?.compositionId) {
         throw new HtmlVideoError(
-          'template-invalid',
+          "template-invalid",
           `Native template "${f.nativeTemplateId}" has no native.compositionId in its metadata`,
         );
       }
       if (!nt.__dir) {
         throw new HtmlVideoError(
-          'template-invalid',
+          "template-invalid",
           `Native template "${f.nativeTemplateId}" has no __dir; was it loaded via TemplateRegistry?`,
         );
       }
       return {
-        engine: 'remotion',
+        engine: "remotion",
         templateRef: {
           id: `frame-${f.graphNodeId}`,
-          engine: 'remotion',
+          engine: "remotion",
           sourcePath: join(nt.__dir, nt.source_entry),
-          mode: 'native',
+          mode: "native",
           nativeCompositionId: nt.native.compositionId,
         },
       };
@@ -512,7 +603,11 @@ export class ProjectOrchestrator {
     const engine = f.engine ?? projectEngine;
     return {
       engine,
-      templateRef: { id: `frame-${f.graphNodeId}`, engine, sourcePath: f.htmlPath },
+      templateRef: {
+        id: `frame-${f.graphNodeId}`,
+        engine,
+        sourcePath: f.htmlPath,
+      },
     };
   }
 
@@ -532,35 +627,40 @@ export class ProjectOrchestrator {
     const project = await this.deps.projects.load(projectId);
     const graph = await this.readContentGraph(projectId);
     if (!graph) {
-      throw new HtmlVideoError('invalid-input', 'Project has no content graph');
+      throw new HtmlVideoError("invalid-input", "Project has no content graph");
     }
     const node = graph.nodes.find((n) => n.id === graphNodeId);
     if (!node) {
-      throw new HtmlVideoError('invalid-input', `Graph node "${graphNodeId}" not found`);
-    }
-    if (node.kind !== 'data') {
       throw new HtmlVideoError(
-        'invalid-input',
+        "invalid-input",
+        `Graph node "${graphNodeId}" not found`,
+      );
+    }
+    if (node.kind !== "data") {
+      throw new HtmlVideoError(
+        "invalid-input",
         `Frame "${graphNodeId}" is a ${node.kind} node; native data enhancement only applies to data frames`,
       );
     }
     const tmpl = this.deps.templates.get(nativeTemplateId); // throws if unknown
-    if (tmpl.engine !== 'remotion' || !tmpl.native?.compositionId) {
+    if (tmpl.engine !== "remotion" || !tmpl.native?.compositionId) {
       throw new HtmlVideoError(
-        'invalid-input',
+        "invalid-input",
         `Template "${nativeTemplateId}" is not a native Remotion template`,
       );
     }
     const data = normalizeRollupData((node as { data?: unknown }).data);
 
-    const frame = (project.frames ?? []).find((f) => f.graphNodeId === graphNodeId);
+    const frame = (project.frames ?? []).find(
+      (f) => f.graphNodeId === graphNodeId,
+    );
     if (!frame) {
       throw new HtmlVideoError(
-        'invalid-input',
+        "invalid-input",
         `Frame "${graphNodeId}" has not been rendered yet (no FrameRecord)`,
       );
     }
-    frame.engine = 'remotion';
+    frame.engine = "remotion";
     frame.nativeTemplateId = nativeTemplateId;
     frame.data = data;
     await this.deps.projects.save(project);
@@ -576,9 +676,14 @@ export class ProjectOrchestrator {
     graphNodeId: string,
   ): Promise<{ project: Project; frame: FrameRecord }> {
     const project = await this.deps.projects.load(projectId);
-    const frame = (project.frames ?? []).find((f) => f.graphNodeId === graphNodeId);
+    const frame = (project.frames ?? []).find(
+      (f) => f.graphNodeId === graphNodeId,
+    );
     if (!frame) {
-      throw new HtmlVideoError('invalid-input', `Frame "${graphNodeId}" not found`);
+      throw new HtmlVideoError(
+        "invalid-input",
+        `Frame "${graphNodeId}" not found`,
+      );
     }
     delete frame.engine;
     delete frame.nativeTemplateId;
@@ -608,26 +713,46 @@ export class ProjectOrchestrator {
   }): Promise<{ project: Project; frame: FrameRecord; previewPath: string }> {
     const project = await this.deps.projects.load(args.projectId);
     const projectDir = await this.deps.projects.ensureDir(project.id);
-    const frame = (project.frames ?? []).find((f) => f.graphNodeId === args.graphNodeId);
+    const frame = (project.frames ?? []).find(
+      (f) => f.graphNodeId === args.graphNodeId,
+    );
     if (!frame) {
-      throw new HtmlVideoError('invalid-input', `Frame "${args.graphNodeId}" not found`);
+      throw new HtmlVideoError(
+        "invalid-input",
+        `Frame "${args.graphNodeId}" not found`,
+      );
     }
-    const tmpl = project.templateId ? this.deps.templates.get(project.templateId) : null;
-    const projectEngine = tmpl?.engine ?? 'hyperframes';
-    const { engine, templateRef } = this.resolveFrameTemplateRef(frame, projectEngine);
+    const tmpl = project.templateId
+      ? this.deps.templates.get(project.templateId)
+      : null;
+    const projectEngine = tmpl?.engine ?? "hyperframes";
+    const { engine, templateRef } = this.resolveFrameTemplateRef(
+      frame,
+      projectEngine,
+    );
     const adapter = this.deps.engines.get(engine);
 
-    const previewPath = join(projectDir, 'frames', `${String(frame.order + 1).padStart(2, '0')}.preview.mp4`);
+    const previewPath = join(
+      projectDir,
+      "frames",
+      `${String(frame.order + 1).padStart(2, "0")}.preview.mp4`,
+    );
     await adapter.render(
       {
         template: templateRef,
-        variables: frame.data !== undefined ? { ...project.variables, data: frame.data } : project.variables,
+        variables:
+          frame.data !== undefined
+            ? { ...project.variables, data: frame.data }
+            : project.variables,
         config: {
-          format: 'mp4',
-          resolution: project.preferences.resolution ?? { width: 1920, height: 1080 },
+          format: "mp4",
+          resolution: project.preferences.resolution ?? {
+            width: 1920,
+            height: 1080,
+          },
           fps: project.preferences.fps ?? 60,
           duration: frame.durationSec,
-          durationMode: 'explicit',
+          durationMode: "explicit",
           outputPath: previewPath,
         },
       },
@@ -664,17 +789,25 @@ export class ProjectOrchestrator {
     const narrationPath = findPath(st.narrationAssetId);
     if (!musicPath && !narrationPath) return; // referenced assets are gone
 
-    onProgress?.(99, 'mixing audio');
-    const { rename, writeFile, unlink } = await import('node:fs/promises');
+    onProgress?.(99, "mixing audio");
+    const { rename, writeFile, unlink } = await import("node:fs/promises");
     const tmpOut = `${outputPath}.muxed.mp4`;
 
     // Word-by-word captions: build an ASS from the stored cues and burn it in.
     // Only meaningful with narration (cues come from it); requires re-encode.
     // Skips gracefully (export still succeeds) if this ffmpeg lacks libass.
     let assPath: string | undefined;
-    if (st.captions && st.captionCues && st.captionCues.length > 0 && narrationPath) {
+    if (
+      st.captions &&
+      st.captionCues &&
+      st.captionCues.length > 0 &&
+      narrationPath
+    ) {
       if (!ffmpegSupportsAss()) {
-        onProgress?.(99, 'captions skipped — ffmpeg has no libass (see: brew install ffmpeg)');
+        onProgress?.(
+          99,
+          "captions skipped — ffmpeg has no libass (see: brew install ffmpeg)",
+        );
       } else {
         const dims = probeVideoDimensions(outputPath);
         const ass = buildCaptionAss(st.captionCues, {
@@ -682,12 +815,12 @@ export class ProjectOrchestrator {
           ...(dims?.height !== undefined && { height: dims.height }),
         });
         assPath = `${outputPath}.captions.ass`;
-        await writeFile(assPath, ass, 'utf8');
+        await writeFile(assPath, ass, "utf8");
       }
     }
     // Custom fonts (e.g. Geist) live here; hand libass their dir so `fontName`
     // resolves even when the font isn't installed system-wide.
-    const fontsDir = join(this.deps.projectRoot, '.html-video', 'fonts');
+    const fontsDir = join(this.deps.projectRoot, ".html-video", "fonts");
     const hasFonts = assPath !== undefined && existsSync(fontsDir);
     // A background-music asset may be longer than the video; `-shortest`
     // already trims it to the video length, but a hard cut sounds abrupt.
@@ -703,8 +836,12 @@ export class ProjectOrchestrator {
       outputPath: tmpOut,
       ...(musicPath !== undefined && { musicPath }),
       ...(narrationPath !== undefined && { narrationPath }),
-      ...(st.musicVolumeDb !== undefined && { musicVolumeDb: st.musicVolumeDb }),
-      ...(st.narrationVolumeDb !== undefined && { narrationVolumeDb: st.narrationVolumeDb }),
+      ...(st.musicVolumeDb !== undefined && {
+        musicVolumeDb: st.musicVolumeDb,
+      }),
+      ...(st.narrationVolumeDb !== undefined && {
+        narrationVolumeDb: st.narrationVolumeDb,
+      }),
       ...(st.fadeInSec !== undefined && { fadeInSec: st.fadeInSec }),
       ...(fadeOutSec > 0 && { fadeOutSec }),
       ...(videoDurationSec !== undefined && { videoDurationSec }),
@@ -721,8 +858,8 @@ let _assFilterSupport: boolean | undefined;
 function ffmpegSupportsAss(): boolean {
   if (_assFilterSupport !== undefined) return _assFilterSupport;
   try {
-    const out = execFileSync(ffmpegBin(), ['-hide_banner', '-filters'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+    const out = execFileSync(ffmpegBin(), ["-hide_banner", "-filters"], {
+      stdio: ["ignore", "pipe", "ignore"],
     }).toString();
     _assFilterSupport = /\bass\s+[SAVN|]+->[SAVN|]+/.test(out);
   } catch {
@@ -732,17 +869,33 @@ function ffmpegSupportsAss(): boolean {
 }
 
 /** Probe a video's pixel dimensions with ffprobe (best-effort). */
-function probeVideoDimensions(file: string): { width: number; height: number } | undefined {
+function probeVideoDimensions(
+  file: string,
+): { width: number; height: number } | undefined {
   try {
     const out = execFileSync(
       ffprobeBin(),
-      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
-        '-of', 'csv=s=x:p=0', file],
-      { stdio: ['ignore', 'pipe', 'ignore'] },
-    ).toString().trim();
-    const [w, h] = out.split('x').map((n) => Number.parseInt(n, 10));
-    if (Number.isFinite(w) && Number.isFinite(h) && w! > 0 && h! > 0) return { width: w!, height: h! };
-  } catch { /* ffprobe absent or failed */ }
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+        file,
+      ],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    )
+      .toString()
+      .trim();
+    const [w, h] = out.split("x").map((n) => Number.parseInt(n, 10));
+    if (Number.isFinite(w) && Number.isFinite(h) && w! > 0 && h! > 0)
+      return { width: w!, height: h! };
+  } catch {
+    /* ffprobe absent or failed */
+  }
   return undefined;
 }
 
@@ -757,26 +910,30 @@ function probeVideoDimensions(file: string): { width: number; height: number } |
  * to the renderer. Accepts either the already-shaped object or a bare array of
  * {label,value}. Throws a clear error rather than rendering garbage.
  */
-function normalizeRollupData(raw: unknown): { title?: string; unit?: string; items: { label: string; value: number }[] } {
+function normalizeRollupData(raw: unknown): {
+  title?: string;
+  unit?: string;
+  items: { label: string; value: number }[];
+} {
   const asItems = (arr: unknown): { label: string; value: number }[] => {
     if (!Array.isArray(arr)) {
       throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame has no `items` array to animate; expected {items:[{label,value}]}',
+        "invalid-input",
+        "Data frame has no `items` array to animate; expected {items:[{label,value}]}",
       );
     }
     const items = arr
       .map((it) => {
         const o = (it ?? {}) as Record<string, unknown>;
-        const label = String(o.label ?? o.name ?? '');
+        const label = String(o.label ?? o.name ?? "");
         const value = Number(o.value ?? o.y ?? o.count);
         return { label, value };
       })
-      .filter((it) => it.label !== '' && Number.isFinite(it.value));
+      .filter((it) => it.label !== "" && Number.isFinite(it.value));
     if (items.length === 0) {
       throw new HtmlVideoError(
-        'invalid-input',
-        'Data frame items had no usable {label, numeric value} pairs',
+        "invalid-input",
+        "Data frame items had no usable {label, numeric value} pairs",
       );
     }
     return items;
@@ -784,11 +941,15 @@ function normalizeRollupData(raw: unknown): { title?: string; unit?: string; ite
 
   if (Array.isArray(raw)) return { items: asItems(raw) };
   const o = (raw ?? {}) as Record<string, unknown>;
-  const out: { title?: string; unit?: string; items: { label: string; value: number }[] } = {
+  const out: {
+    title?: string;
+    unit?: string;
+    items: { label: string; value: number }[];
+  } = {
     items: asItems(o.items),
   };
-  if (typeof o.title === 'string') out.title = o.title;
-  if (typeof o.unit === 'string') out.unit = o.unit;
+  if (typeof o.title === "string") out.title = o.title;
+  if (typeof o.unit === "string") out.unit = o.unit;
   return out;
 }
 
@@ -815,11 +976,11 @@ async function concatFramesWithFfmpeg(
   opts: { reencode?: boolean; fps?: number } = {},
 ): Promise<void> {
   if (frameMp4s.length === 0) {
-    throw new HtmlVideoError('render-failed', 'No frames to concat');
+    throw new HtmlVideoError("render-failed", "No frames to concat");
   }
-  const { writeFile } = await import('node:fs/promises');
-  const { join } = await import('node:path');
-  const { spawn } = await import('node:child_process');
+  const { writeFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { spawn } = await import("node:child_process");
 
   const fps = opts.fps ?? 60;
   let ffmpegArgs: string[];
@@ -827,51 +988,72 @@ async function concatFramesWithFfmpeg(
   if (opts.reencode) {
     // concat FILTER: independent `-i` per segment + filter rebuilds the timeline.
     const n = frameMp4s.length;
-    const inputs = frameMp4s.flatMap((p) => ['-i', p]);
-    const filter = `${frameMp4s.map((_, i) => `[${i}:v]`).join('')}concat=n=${n}:v=1:a=0[v]`;
+    const inputs = frameMp4s.flatMap((p) => ["-i", p]);
+    const filter = `${frameMp4s.map((_, i) => `[${i}:v]`).join("")}concat=n=${n}:v=1:a=0[v]`;
     ffmpegArgs = [
-      '-y',
+      "-y",
       ...inputs,
-      '-filter_complex', filter,
-      '-map', '[v]',
-      '-c:v', 'libx264',
-      '-pix_fmt', 'yuv420p',
-      '-r', String(fps),
-      '-movflags', '+faststart',
+      "-filter_complex",
+      filter,
+      "-map",
+      "[v]",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(fps),
+      "-movflags",
+      "+faststart",
       outputPath,
     ];
   } else {
     // concat DEMUXER + stream copy: needs the list file.
-    const listPath = join(workDir, 'frames', 'concat.txt');
-    const list = frameMp4s.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
-    await writeFile(listPath, list, 'utf8');
-    ffmpegArgs = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', outputPath];
+    const listPath = join(workDir, "frames", "concat.txt");
+    const list = frameMp4s
+      .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+      .join("\n");
+    await writeFile(listPath, list, "utf8");
+    ffmpegArgs = [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      listPath,
+      "-c",
+      "copy",
+      outputPath,
+    ];
   }
 
   await new Promise<void>((resolveFn, reject) => {
-    const proc = spawn(ffmpegBin(), ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
+    const proc = spawn(ffmpegBin(), ffmpegArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    proc.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') {
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
         reject(
           new HtmlVideoError(
-            'render-failed',
-            'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.',
+            "render-failed",
+            "ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.",
           ),
         );
       } else {
         reject(err);
       }
     });
-    proc.on('exit', (code: number | null) => {
+    proc.on("exit", (code: number | null) => {
       if (code === 0) resolveFn();
       else
         reject(
           new HtmlVideoError(
-            'render-failed',
+            "render-failed",
             `ffmpeg concat exited with code ${code}: ${stderr.slice(-2000)}`,
           ),
         );
@@ -905,8 +1087,8 @@ async function muxAudioWithFfmpeg(args: {
   /** Directory of extra fonts for libass to resolve style font names. */
   fontsDir?: string;
 }): Promise<void> {
-  const { spawn } = await import('node:child_process');
-  const { dirname, basename: base } = await import('node:path');
+  const { spawn } = await import("node:child_process");
+  const { dirname, basename: base } = await import("node:path");
   const hasMusic = !!args.musicPath;
   const hasNarration = !!args.narrationPath;
   if (!hasMusic && !hasNarration) return; // nothing to mix
@@ -917,12 +1099,18 @@ async function muxAudioWithFfmpeg(args: {
   const fadeOut = args.fadeOutSec ?? 0;
 
   // Inputs: [0] video, then music / narration in order.
-  const inputs: string[] = ['-i', args.videoPath];
+  const inputs: string[] = ["-i", args.videoPath];
   let musicIdx = -1;
   let narrIdx = -1;
   let next = 1;
-  if (hasMusic) { inputs.push('-i', args.musicPath!); musicIdx = next++; }
-  if (hasNarration) { inputs.push('-i', args.narrationPath!); narrIdx = next++; }
+  if (hasMusic) {
+    inputs.push("-i", args.musicPath!);
+    musicIdx = next++;
+  }
+  if (hasNarration) {
+    inputs.push("-i", args.narrationPath!);
+    narrIdx = next++;
+  }
 
   // Build a filter graph producing a single [aout] label.
   const filters: string[] = [];
@@ -931,24 +1119,30 @@ async function muxAudioWithFfmpeg(args: {
     let chain = `[${musicIdx}:a]volume=${musicVol}dB`;
     if (fadeIn > 0) chain += `,afade=t=in:st=0:d=${fadeIn}`;
     // Fade-out only when we know where the end is.
-    if (fadeOut > 0 && args.videoDurationSec && args.videoDurationSec > fadeOut) {
+    if (
+      fadeOut > 0 &&
+      args.videoDurationSec &&
+      args.videoDurationSec > fadeOut
+    ) {
       chain += `,afade=t=out:st=${(args.videoDurationSec - fadeOut).toFixed(2)}:d=${fadeOut}`;
     }
-    chain += '[bg]';
+    chain += "[bg]";
     filters.push(chain);
-    mixLabels.push('[bg]');
+    mixLabels.push("[bg]");
   }
   if (hasNarration) {
     filters.push(`[${narrIdx}:a]volume=${narrVol}dB[vo]`);
-    mixLabels.push('[vo]');
+    mixLabels.push("[vo]");
   }
   if (mixLabels.length === 2) {
-    filters.push(`${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[amixed]`);
+    filters.push(
+      `${mixLabels[0]}${mixLabels[1]}amix=inputs=2:duration=longest:dropout_transition=0[amixed]`,
+    );
     // Pad with trailing silence so the audio is NEVER shorter than the video.
     // Otherwise `-shortest` below trims the VIDEO down to a short narration and
     // drops later scenes (the "scenes incomplete" bug). apad makes the audio
     // effectively infinite, so `-shortest` clamps the output to the finite video.
-    filters.push(`[amixed]apad[aout]`);
+    filters.push("[amixed]apad[aout]");
   } else {
     // single source → pad to (at least) the video length, then relabel.
     filters.push(`${mixLabels[0]}apad[aout]`);
@@ -958,51 +1152,77 @@ async function muxAudioWithFfmpeg(args: {
   // video stream untouched. We run ffmpeg with cwd = the ass file's dir and
   // reference it by basename, sidestepping filtergraph path-escaping entirely.
   const burn = !!args.assPath;
-  const videoMap = burn ? '[vout]' : '0:v';
+  const videoMap = burn ? "[vout]" : "0:v";
   if (burn) {
     // Single-quote the fonts dir so the filtergraph parser doesn't swallow the
     // following [vout] pad label into the path value.
-    const escFonts = (args.fontsDir ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const fontsOpt = args.fontsDir ? `:fontsdir='${escFonts}'` : '';
+    const escFonts = (args.fontsDir ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/'/g, "\\'");
+    const fontsOpt = args.fontsDir ? `:fontsdir='${escFonts}'` : "";
     filters.push(`[0:v]ass=${base(args.assPath!)}${fontsOpt}[vout]`);
   }
   const videoCodec = burn
-    ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p']
-    : ['-c:v', 'copy'];
+    ? [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+      ]
+    : ["-c:v", "copy"];
 
   const ffArgs = [
-    '-y',
+    "-y",
     ...inputs,
-    '-filter_complex', filters.join(';'),
-    '-map', videoMap,
-    '-map', '[aout]',
+    "-filter_complex",
+    filters.join(";"),
+    "-map",
+    videoMap,
+    "-map",
+    "[aout]",
     ...videoCodec,
-    '-c:a', 'aac',
-    '-b:a', '192k',
-    '-shortest',
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-shortest",
     args.outputPath,
   ];
 
   await new Promise<void>((resolveFn, reject) => {
     const proc = spawn(ffmpegBin(), ffArgs, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ["ignore", "pipe", "pipe"],
       ...(burn && { cwd: dirname(args.assPath!) }),
     });
-    let stderr = '';
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
-    proc.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') {
-        reject(new HtmlVideoError(
-          'render-failed',
-          'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.',
-        ));
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
+        reject(
+          new HtmlVideoError(
+            "render-failed",
+            "ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS) or your platform equivalent.",
+          ),
+        );
       } else {
         reject(err);
       }
     });
-    proc.on('exit', (code: number | null) => {
+    proc.on("exit", (code: number | null) => {
       if (code === 0) resolveFn();
-      else reject(new HtmlVideoError('render-failed', `ffmpeg audio mux exited with code ${code}: ${stderr.slice(-2000)}`));
+      else
+        reject(
+          new HtmlVideoError(
+            "render-failed",
+            `ffmpeg audio mux exited with code ${code}: ${stderr.slice(-2000)}`,
+          ),
+        );
     });
   });
 }
@@ -1015,7 +1235,11 @@ async function muxAudioWithFfmpeg(args: {
  *  capped so it doesn't grow unbounded). */
 function recordExport(project: Project, outputPath: string): void {
   const list = (project.exports ?? []).filter((e) => e.path !== outputPath);
-  list.push({ path: outputPath, filename: basename(outputPath), createdAt: new Date().toISOString() });
+  list.push({
+    path: outputPath,
+    filename: basename(outputPath),
+    createdAt: new Date().toISOString(),
+  });
   // Keep the most recent 20.
   project.exports = list.slice(-20);
 }
@@ -1023,7 +1247,7 @@ function recordExport(project: Project, outputPath: string): void {
 function templateRefFromMeta(meta: TemplateMetadata) {
   if (!meta.__dir) {
     throw new HtmlVideoError(
-      'template-invalid',
+      "template-invalid",
       `Template ${meta.id} has no __dir set; was it loaded via TemplateRegistry?`,
     );
   }
@@ -1034,10 +1258,12 @@ function templateRefFromMeta(meta: TemplateMetadata) {
   };
 }
 
-function downgradeStatus(current: ProjectStatus, target: ProjectStatus): ProjectStatus {
+function downgradeStatus(
+  current: ProjectStatus,
+  target: ProjectStatus,
+): ProjectStatus {
   // After any modification, status should not be more advanced than 'draft'/given target.
   // 'rendered' / 'previewed' get demoted back to 'draft' on any meaningful change.
-  if (target === 'draft') return 'draft';
+  if (target === "draft") return "draft";
   return current;
 }
-

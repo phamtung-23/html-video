@@ -13,55 +13,68 @@
  * our generated HTML is plain inline-CSS+JS, chromium runs it as-is.
  */
 
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { existsSync, readdirSync } from 'node:fs';
-import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type {
   HtmlSceneOutput,
   RenderContext,
   RenderInput,
   RenderOutput,
-} from '@html-video/core';
-import { HtmlVideoError, ffmpegBin } from '@html-video/core';
+} from "@html-video/core";
+import { HtmlVideoError, ffmpegBin } from "@html-video/core";
 
-const ADAPTER_VERSION = '0.2.0-playwright';
+const ADAPTER_VERSION = "0.2.0-playwright";
 
 /** Real render: chromium records the page, ffmpeg transcodes to MP4. */
-export async function render(input: RenderInput, ctx: RenderContext): Promise<RenderOutput> {
+export async function render(
+  input: RenderInput,
+  ctx: RenderContext,
+): Promise<RenderOutput> {
   const t0 = Date.now();
-  ctx.onProgress?.(5, 'preparing');
+  ctx.onProgress?.(5, "preparing");
   const outDir = dirname(input.config.outputPath);
   await mkdir(outDir, { recursive: true });
-  if (ctx.signal?.aborted) throw new HtmlVideoError('cancelled', 'Aborted');
+  if (ctx.signal?.aborted) throw new HtmlVideoError("cancelled", "Aborted");
 
   // Resolve the source HTML path. Templates pass an absolute path already;
   // multi-frame `core` calls pass the per-frame HTML path the same way.
   if (!existsSync(input.template.sourcePath)) {
     throw new HtmlVideoError(
-      'template-invalid',
+      "template-invalid",
       `Source HTML not found: ${input.template.sourcePath}`,
     );
   }
 
   let totalDuration =
-    input.config.duration === 'auto' ? 5 : Math.max(0.5, Number(input.config.duration));
+    input.config.duration === "auto"
+      ? 5
+      : Math.max(0.5, Number(input.config.duration));
   const { width, height } = input.config.resolution;
   const fps = input.config.fps || 30;
 
   // Lazy-load playwright so the import cost only hits actual exports.
-  ctx.onProgress?.(15, 'launching browser');
-  const playwright = await import('playwright').catch((err) => {
+  ctx.onProgress?.(15, "launching browser");
+  const playwright = await import("playwright").catch((err) => {
     throw new HtmlVideoError(
-      'render-failed',
+      "render-failed",
       `playwright not installed (run \`pnpm install\` from the monorepo root). ${err instanceof Error ? err.message : err}`,
     );
   });
 
-  const recordDir = await mkdtemp(join(tmpdir(), 'hv-render-'));
-  let browser: import('playwright').Browser | undefined;
+  const recordDir = await mkdtemp(join(tmpdir(), "hv-render-"));
+  let browser: import("playwright").Browser | undefined;
   let webmPath: string | undefined;
   let cleanupSrc: (() => Promise<void>) | undefined;
   // Wall-clock offset (ms) from when the webm starts recording to when we
@@ -70,7 +83,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   try {
     browser = await playwright.chromium.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
     });
     // recordVideo starts capturing the moment the context exists, so this is
     // the webm's t=0 reference.
@@ -95,14 +108,16 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // shape as the multi-composition paused→drive path below.
     await page.addInitScript(() => {
       // 1) Freeze CSS @keyframes animations at frame 0.
-      const style = document.createElement('style');
-      style.id = '__hv_freeze';
+      const style = document.createElement("style");
+      style.id = "__hv_freeze";
       style.textContent =
-        '*, *::before, *::after { animation-play-state: paused !important;' +
-        ' -webkit-animation-play-state: paused !important; }';
-      const attach = () => (document.head || document.documentElement).appendChild(style);
+        "*, *::before, *::after { animation-play-state: paused !important;" +
+        " -webkit-animation-play-state: paused !important; }";
+      const attach = () =>
+        (document.head || document.documentElement).appendChild(style);
       if (document.head || document.documentElement) attach();
-      else document.addEventListener('DOMContentLoaded', attach, { once: true });
+      else
+        document.addEventListener("DOMContentLoaded", attach, { once: true });
 
       // 2) Freeze auto-playing GSAP at t=0. Most agent-authored frames run their
       //    entrance via `gsap.timeline()`, which plays the moment the frame's
@@ -114,26 +129,44 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       //    timeline at 0 as soon as it appears; __hvUnfreeze replays it from 0
       //    when recording truly starts.
       const w = window as unknown as {
-        gsap?: { globalTimeline?: { pause: (t?: number) => void; play: (t?: number) => void } };
+        gsap?: {
+          globalTimeline?: {
+            pause: (t?: number) => void;
+            play: (t?: number) => void;
+          };
+        };
         __hvUnfreeze?: () => void;
       };
       const freezeGsap = () => {
         const gt = w.gsap?.globalTimeline;
-        if (gt) { try { gt.pause(0); } catch { /* noop */ } return true; }
+        if (gt) {
+          try {
+            gt.pause(0);
+          } catch {
+            /* noop */
+          }
+          return true;
+        }
         return false;
       };
       if (!freezeGsap()) {
-        const iv = setInterval(() => { if (freezeGsap()) clearInterval(iv); }, 8);
+        const iv = setInterval(() => {
+          if (freezeGsap()) clearInterval(iv);
+        }, 8);
         setTimeout(() => clearInterval(iv), 10000);
       }
 
       w.__hvUnfreeze = () => {
-        document.getElementById('__hv_freeze')?.remove();
-        try { w.gsap?.globalTimeline?.play(0); } catch { /* noop */ }
+        document.getElementById("__hv_freeze")?.remove();
+        try {
+          w.gsap?.globalTimeline?.play(0);
+        } catch {
+          /* noop */
+        }
       };
     });
 
-    ctx.onProgress?.(30, 'loading frame');
+    ctx.onProgress?.(30, "loading frame");
     // Multi-composition templates ship an entry index.html that only stitches
     // sub-scenes via `data-composition-src="compositions/x.html"`; loaded raw
     // over file:// the scenes never appear (chromium blocks file:// fetch, so
@@ -151,7 +184,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // timeline ever plays, so the clip opens on several dead seconds. Fonts are
     // awaited separately below (document.fonts.ready); GSAP is a synchronous
     // <head> script so it's ready at DOMContentLoaded.
-    await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+    await page.goto(fileUrl, { waitUntil: "domcontentloaded" });
 
     // Wait for all web fonts to finish loading BEFORE recording. Templates
     // pull display faces (Shrikhand, Libre Baskerville, Archivo Black, …) from
@@ -178,14 +211,14 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     //      glyph metrics before frame 0.
     // Everything is capped so a slow/blocked font CDN can't stall forever —
     // worst case we fall back to the previous behavior for that one frame.
-    ctx.onProgress?.(32, 'loading fonts');
+    ctx.onProgress?.(32, "loading fonts");
     await page
       .evaluate(
         () =>
           new Promise<void>((resolve) => {
             const doc = document as Document & { fonts?: FontFaceSet };
             const fonts = doc.fonts;
-            if (!fonts || typeof fonts.ready?.then !== 'function') {
+            if (!fonts || typeof fonts.ready?.then !== "function") {
               resolve();
               return;
             }
@@ -195,14 +228,18 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
               if (settled) return;
               settled = true;
               // One more frame so the relayout on the real face is painted.
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve()),
+              );
             };
             // Hard cap: a blocked CDN must never stall the render.
             const cap = setTimeout(finish, 8000);
 
             // 1. Wait for stylesheet <link>s to load (registers @font-face).
             const links = Array.from(
-              document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+              document.querySelectorAll<HTMLLinkElement>(
+                'link[rel="stylesheet"]',
+              ),
             );
             const linkDone = links.map((link) => {
               // An already-loaded sheet exposes cssRules without throwing.
@@ -213,8 +250,8 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
               }
               return new Promise<void>((r) => {
                 const done = () => r();
-                link.addEventListener('load', done, { once: true });
-                link.addEventListener('error', done, { once: true });
+                link.addEventListener("load", done, { once: true });
+                link.addEventListener("error", done, { once: true });
                 // Per-link safety so one wedged link can't hold the batch.
                 setTimeout(done, 6000);
               });
@@ -259,28 +296,50 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     try {
       const animMs = await page.evaluate(() => {
         let maxMs = 0;
-        Array.from(document.querySelectorAll('*')).forEach((el) => {
+        Array.from(document.querySelectorAll("*")).forEach((el) => {
           const s = getComputedStyle(el);
-          const durs = (s.animationDuration || '').split(',');
-          const dels = (s.animationDelay || '').split(',');
-          const iters = (s.animationIterationCount || '').split(',');
+          const durs = (s.animationDuration || "").split(",");
+          const dels = (s.animationDelay || "").split(",");
+          const iters = (s.animationIterationCount || "").split(",");
           durs.forEach((d, i) => {
-            if ((iters[i] || '').trim() === 'infinite') return; // ignore looping bg anims
-            maxMs = Math.max(maxMs, ((parseFloat(d) || 0) + (parseFloat(dels[i] || '0') || 0)) * 1000);
+            if ((iters[i] || "").trim() === "infinite") return; // ignore looping bg anims
+            maxMs = Math.max(
+              maxMs,
+              ((Number.parseFloat(d) || 0) +
+                (Number.parseFloat(dels[i] || "0") || 0)) *
+                1000,
+            );
           });
         });
         // GSAP: do NOT use globalTimeline.totalDuration() — an infinitely
         // repeating tween (repeat:-1, e.g. a blinking cursor) makes it ~1e10s.
         // Walk the children and take the longest FINITE (non-repeat:-1) tween.
-        const g = (window as unknown as {
-          gsap?: { globalTimeline?: { getChildren?: (b?: boolean, t?: boolean, tl?: boolean) => Array<{ totalDuration?: () => number; repeat?: () => number; vars?: { repeat?: number } }> } };
-        }).gsap;
+        const g = (
+          window as unknown as {
+            gsap?: {
+              globalTimeline?: {
+                getChildren?: (
+                  b?: boolean,
+                  t?: boolean,
+                  tl?: boolean,
+                ) => Array<{
+                  totalDuration?: () => number;
+                  repeat?: () => number;
+                  vars?: { repeat?: number };
+                }>;
+              };
+            };
+          }
+        ).gsap;
         let gsapMs = 0;
-        const children = g?.globalTimeline?.getChildren?.(true, true, true) ?? [];
+        const children =
+          g?.globalTimeline?.getChildren?.(true, true, true) ?? [];
         for (const c of children) {
-          const repeat = typeof c.repeat === 'function' ? c.repeat() : (c.vars?.repeat ?? 0);
+          const repeat =
+            typeof c.repeat === "function" ? c.repeat() : (c.vars?.repeat ?? 0);
           if (repeat === -1) continue; // infinite loop — ignore
-          const td = typeof c.totalDuration === 'function' ? c.totalDuration() : 0;
+          const td =
+            typeof c.totalDuration === "function" ? c.totalDuration() : 0;
           if (Number.isFinite(td)) gsapMs = Math.max(gsapMs, td * 1000);
         }
         return Math.max(maxMs, gsapMs);
@@ -297,10 +356,15 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       // animation fits (the normal case — templates are authored to settle within
       // the frame), this is a no-op and the requested length holds.
       if (needed > totalDuration) {
-        ctx.onProgress?.(38, `extending to ${needed.toFixed(1)}s so the animation finishes`);
+        ctx.onProgress?.(
+          38,
+          `extending to ${needed.toFixed(1)}s so the animation finishes`,
+        );
         totalDuration = needed;
       }
-    } catch { /* probe failed — fall back to the requested duration */ }
+    } catch {
+      /* probe failed — fall back to the requested duration */
+    }
 
     // Multi-composition templates register their master timeline paused so the
     // probe above can read its real (finite) duration. Now that the recording
@@ -309,8 +373,11 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     // part of the timeline before we begin recording.
     const drove = await page
       .evaluate(() => {
-        const w = window as unknown as { __hvPlayAll?: () => void; __hvPlayed?: boolean };
-        if (typeof w.__hvPlayAll === 'function') {
+        const w = window as unknown as {
+          __hvPlayAll?: () => void;
+          __hvPlayed?: boolean;
+        };
+        if (typeof w.__hvPlayAll === "function") {
           w.__hvPlayed = true;
           w.__hvPlayAll();
           return true;
@@ -342,18 +409,23 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
     const tick = 250;
     const start = Date.now();
     while (Date.now() - start < totalMs) {
-      if (ctx.signal?.aborted) throw new HtmlVideoError('cancelled', 'Aborted');
+      if (ctx.signal?.aborted) throw new HtmlVideoError("cancelled", "Aborted");
       await page.waitForTimeout(Math.min(tick, totalMs - (Date.now() - start)));
       const pct = 40 + Math.floor(((Date.now() - start) / totalMs) * 45);
-      ctx.onProgress?.(pct, 'recording');
+      ctx.onProgress?.(pct, "recording");
     }
 
-    ctx.onProgress?.(85, 'finalising recording');
+    ctx.onProgress?.(85, "finalising recording");
     await context.close();
     // playwright drops the webm into recordDir; pick the freshest .webm
-    const candidates = readdirSync(recordDir).filter((f) => f.endsWith('.webm'));
+    const candidates = readdirSync(recordDir).filter((f) =>
+      f.endsWith(".webm"),
+    );
     if (candidates.length === 0) {
-      throw new HtmlVideoError('render-failed', `Playwright produced no webm in ${recordDir}`);
+      throw new HtmlVideoError(
+        "render-failed",
+        `Playwright produced no webm in ${recordDir}`,
+      );
     }
     candidates.sort();
     webmPath = join(recordDir, candidates[candidates.length - 1]!);
@@ -363,7 +435,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   }
 
   // ---- ffmpeg: webm → mp4 ----
-  ctx.onProgress?.(90, 'encoding mp4');
+  ctx.onProgress?.(90, "encoding mp4");
   // Trim the dead lead-in (page load + font fetch before the timeline played)
   // off the front of multi-composition webms. Back off 120ms so rounding /
   // recorder start jitter can't clip the first real animation frame — a couple
@@ -375,25 +447,35 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   // pad the tail by holding the last frame (`tpad stop_mode=clone`) up to the
   // target. -t then trims to the precise length. For 'auto' we keep the old
   // behavior (just -t, no padding) — there the duration is a soft fallback.
-  const explicit = input.config.durationMode === 'explicit';
+  const explicit = input.config.durationMode === "explicit";
   await runFfmpeg([
-    '-y',
+    "-y",
     // -ss before -i = fast input seek, drops the frozen lead-in entirely.
-    ...(seekSec > 0 ? ['-ss', seekSec.toFixed(3)] : []),
-    '-i', webmPath!,
+    ...(seekSec > 0 ? ["-ss", seekSec.toFixed(3)] : []),
+    "-i",
+    webmPath!,
     // Pad-then-trim so an explicit per-frame length lands exactly (e.g. user
     // asked 4s, animation ran 2.8s → hold the final frame to fill 4s).
-    ...(explicit ? ['-vf', `tpad=stop_mode=clone:stop_duration=${totalDuration}`] : []),
+    ...(explicit
+      ? ["-vf", `tpad=stop_mode=clone:stop_duration=${totalDuration}`]
+      : []),
     // Force exact duration: playwright's recordVideo sometimes overshoots
     // by the time it takes to close the context. -t trims to the requested
     // length (seconds, accepts fractions).
-    '-t', String(totalDuration),
-    '-r', String(fps),
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-preset', 'medium',
-    '-crf', '20',
-    '-movflags', '+faststart',
+    "-t",
+    String(totalDuration),
+    "-r",
+    String(fps),
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-preset",
+    "medium",
+    "-crf",
+    "20",
+    "-movflags",
+    "+faststart",
     input.config.outputPath,
   ]);
 
@@ -401,7 +483,7 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
   await rm(recordDir, { recursive: true, force: true }).catch(() => {});
 
   const st = await stat(input.config.outputPath);
-  ctx.onProgress?.(100, 'done');
+  ctx.onProgress?.(100, "done");
   return {
     outputPath: input.config.outputPath,
     meta: {
@@ -413,29 +495,40 @@ export async function render(input: RenderInput, ctx: RenderContext): Promise<Re
       renderWallClockSec: (Date.now() - t0) / 1000,
       engineVersion: `hyperframes-playwright@${ADAPTER_VERSION}`,
     },
-    diagnostics: [`recorded via playwright/chromium then encoded with ffmpeg (libx264 crf20)`],
+    diagnostics: [
+      "recorded via playwright/chromium then encoded with ffmpeg (libx264 crf20)",
+    ],
   };
 }
 
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8');
+    const proc = spawn(ffmpegBin(), args, {
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    proc.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') {
-        reject(new HtmlVideoError('render-failed',
-          'ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS).'));
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
+        reject(
+          new HtmlVideoError(
+            "render-failed",
+            "ffmpeg not found on PATH. Install with `brew install ffmpeg` (macOS).",
+          ),
+        );
       } else reject(err);
     });
-    proc.on('exit', (code) => {
+    proc.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new HtmlVideoError(
-        'render-failed',
-        `ffmpeg exited ${code}: ${stderr.slice(-2000)}`,
-      ));
+      else
+        reject(
+          new HtmlVideoError(
+            "render-failed",
+            `ffmpeg exited ${code}: ${stderr.slice(-2000)}`,
+          ),
+        );
     });
   });
 }
@@ -460,8 +553,10 @@ function runFfmpeg(args: string[]): Promise<void> {
 async function prepareSourceHtml(
   sourcePath: string,
 ): Promise<{ loadPath: string; cleanup?: () => Promise<void> }> {
-  const raw = await readFile(sourcePath, 'utf8');
-  const srcMatches = Array.from(raw.matchAll(/data-composition-src=["']([^"']+)["']/g));
+  const raw = await readFile(sourcePath, "utf8");
+  const srcMatches = Array.from(
+    raw.matchAll(/data-composition-src=["']([^"']+)["']/g),
+  );
   if (srcMatches.length === 0) return { loadPath: sourcePath };
 
   const srcDir = dirname(sourcePath);
@@ -471,17 +566,19 @@ async function prepareSourceHtml(
     if (compMap[rel] !== undefined) continue;
     const compPath = join(srcDir, rel);
     if (!existsSync(compPath)) continue;
-    compMap[rel] = await readFile(compPath, 'utf8');
+    compMap[rel] = await readFile(compPath, "utf8");
   }
   if (Object.keys(compMap).length === 0) return { loadPath: sourcePath };
 
   // Escape `</` (and the comment opener) so the JSON survives the inline
   // <script> context — composition files contain their own </script> tags.
-  const safeJson = JSON.stringify(compMap).replace(/<\//g, '<\\/').replace(/<!--/g, '<\\!--');
+  const safeJson = JSON.stringify(compMap)
+    .replace(/<\//g, "<\\/")
+    .replace(/<!--/g, "<\\!--");
 
   let out = raw
-    .replace(/__VIDEO_DURATION__/g, '15')
-    .replace(/__VIDEO_SRC__/g, 'data:video/mp4;base64,');
+    .replace(/__VIDEO_DURATION__/g, "15")
+    .replace(/__VIDEO_SRC__/g, "data:video/mp4;base64,");
 
   // Seed the timeline registry in <head> so the entry's own early
   // `window.__timelines["x"] = …` assignments don't throw on undefined.
@@ -547,10 +644,12 @@ async function prepareSourceHtml(
   } else { boot(); }
 })();
 </script>`;
-  out = out.includes('</body>') ? out.replace('</body>', `${player}\n</body>`) : out + player;
+  out = out.includes("</body>")
+    ? out.replace("</body>", `${player}\n</body>`)
+    : out + player;
 
   const loadPath = join(srcDir, `.hv-render-${Date.now()}.html`);
-  await writeFile(loadPath, out, 'utf8');
+  await writeFile(loadPath, out, "utf8");
   return {
     loadPath,
     cleanup: async () => {
@@ -572,25 +671,25 @@ export async function renderToHtml(
 ): Promise<HtmlSceneOutput> {
   if (!existsSync(input.template.sourcePath)) {
     throw new HtmlVideoError(
-      'template-invalid',
+      "template-invalid",
       `Source not found: ${input.template.sourcePath}`,
     );
   }
 
   await mkdir(ctx.workDir, { recursive: true });
-  const htmlPath = join(ctx.workDir, 'preview.html');
-  const posterPath = join(ctx.workDir, 'poster.svg');
+  const htmlPath = join(ctx.workDir, "preview.html");
+  const posterPath = join(ctx.workDir, "poster.svg");
 
-  const sourceHtml = await readFile(input.template.sourcePath, 'utf8');
+  const sourceHtml = await readFile(input.template.sourcePath, "utf8");
   const augmented = sourceHtml.replace(
-    '</body>',
+    "</body>",
     `<script>
 window.__HV_VARS__ = ${JSON.stringify(input.variables)};
-window.__HV_DURATION__ = ${typeof input.config.duration === 'number' ? input.config.duration : 5};
+window.__HV_DURATION__ = ${typeof input.config.duration === "number" ? input.config.duration : 5};
 console.log('html-video preview vars', window.__HV_VARS__);
 </script></body>`,
   );
-  await writeFile(htmlPath, augmented, 'utf8');
+  await writeFile(htmlPath, augmented, "utf8");
 
   // Cheap poster: an SVG placeholder we draw ourselves (no headless chromium yet).
   const { width, height } = input.config.resolution;
@@ -603,15 +702,15 @@ console.log('html-video preview vars', window.__HV_VARS__);
   <text x="50%" y="${height - 80}" fill="#888" font-family="monospace" font-size="32"
         text-anchor="middle">hyperframes · ${input.template.id}</text>
 </svg>`;
-  await writeFile(posterPath, poster, 'utf8');
+  await writeFile(posterPath, poster, "utf8");
 
   // Copy any referenced asset files mentioned in variables (best-effort)
   const referencedAssets: { assetId: string; usagePath: string }[] = [];
   for (const v of Object.values(input.variables)) {
-    if (typeof v !== 'string') continue;
-    if (!v.includes('/.html-video/bundles/')) continue;
+    if (typeof v !== "string") continue;
+    if (!v.includes("/.html-video/bundles/")) continue;
     if (!existsSync(v)) continue;
-    const dest = join(ctx.workDir, 'assets', v.split('/').pop() ?? 'asset');
+    const dest = join(ctx.workDir, "assets", v.split("/").pop() ?? "asset");
     await mkdir(dirname(dest), { recursive: true });
     if (!existsSync(dest)) await copyFile(v, dest);
     const m = /assets\/([0-9a-f]{40})\./.exec(v);
@@ -621,7 +720,7 @@ console.log('html-video preview vars', window.__HV_VARS__);
   }
 
   const totalDuration =
-    input.config.duration === 'auto' ? 5 : input.config.duration;
+    input.config.duration === "auto" ? 5 : input.config.duration;
   return {
     htmlPath,
     referencedAssets,
@@ -633,11 +732,11 @@ console.log('html-video preview vars', window.__HV_VARS__);
 function escapeXml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     const map: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&apos;',
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&apos;",
     };
     return map[c] ?? c;
   });

@@ -10,8 +10,14 @@
 //
 // Not compiled by the adapter's tsc; it's a static asset handed to Remotion's
 // bundle() (webpack understands the JSX).
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useCurrentFrame, useVideoConfig, delayRender, continueRender } from 'remotion';
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCurrentFrame,
+  useVideoConfig,
+  delayRender,
+  continueRender,
+} from "remotion";
 
 export type HtmlFrameDriverProps = {
   /** The HTML frame's full source, inlined and rendered via iframe srcdoc. */
@@ -55,18 +61,26 @@ function docReady(doc: Document | undefined): boolean {
   const hasBody = doc.body.innerHTML.trim().length > 0;
   if (!hasAnims && !hasBody) return false;
   // doc.fonts may be undefined in exotic engines — treat absence as ready.
-  const fontsLoaded = (doc as Document & { fonts?: FontFaceSet }).fonts?.status !== 'loading';
+  const fontsLoaded =
+    (doc as Document & { fonts?: FontFaceSet }).fonts?.status !== "loading";
   return fontsLoaded;
 }
 
-export const HtmlFrameDriver: React.FC<HtmlFrameDriverProps> = ({ html, width, height }) => {
+export const HtmlFrameDriver: React.FC<HtmlFrameDriverProps> = ({
+  html,
+  width,
+  height,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const tMs = (frame / fps) * 1000;
 
   const seek = useCallback((timeMs: number) => {
-    const win = iframeRef.current?.contentWindow as GsapWindow | null | undefined;
+    const win = iframeRef.current?.contentWindow as
+      | GsapWindow
+      | null
+      | undefined;
     const doc = frameDoc(iframeRef.current);
     if (!win || !doc) return;
 
@@ -107,14 +121,16 @@ export const HtmlFrameDriver: React.FC<HtmlFrameDriverProps> = ({ html, width, h
   // seek, then continueRender. A short rAF settle lets the seeked styles paint
   // before Remotion screenshots. The handle is keyed to tMs so a new frame can't
   // clear a stale one.
-  const [handle] = useState(() => delayRender(`HTML frame seek @0ms`));
+  const [handle] = useState(() => delayRender("HTML frame seek @0ms"));
   const firstClearedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     // For the very first frame we reuse the mount-time handle; subsequent frames
     // open their own so Remotion waits for each re-seek.
-    const h = firstClearedRef.current ? delayRender(`HTML frame seek @${Math.round(tMs)}ms`) : handle;
+    const h = firstClearedRef.current
+      ? delayRender(`HTML frame seek @${Math.round(tMs)}ms`)
+      : handle;
     let tries = 0;
     const finish = () => {
       if (cancelled) return;
@@ -147,7 +163,7 @@ export const HtmlFrameDriver: React.FC<HtmlFrameDriverProps> = ({ html, width, h
       srcDoc={html}
       width={width}
       height={height}
-      style={{ width, height, border: 'none', display: 'block' }}
+      style={{ width, height, border: "none", display: "block" }}
       sandbox="allow-same-origin allow-scripts"
     />
   );
