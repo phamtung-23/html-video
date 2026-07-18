@@ -3243,6 +3243,15 @@ function detectPhase(
     return { phase: "format-edit", inputs };
   }
 
+  // A pinned frame means the user is revising an EXISTING frame — go straight to
+  // the single-frame iterate path (the handler writes only that frame's HTML via
+  // focusFrameId). You can only pin a frame that exists, so this is always an
+  // edit; never fall through to the opener/type flow just because the
+  // generation-detection heuristic missed a (localized) progress log.
+  if (focusFrameId) {
+    return { phase: "iterate", inputs };
+  }
+
   // Free-text format reply rescue (issue #2): if the previous assistant turn
   // was asking for format params (whether it rendered the hv-form card or — as
   // the model sometimes does — just asked in prose), and this user turn parses
@@ -3665,7 +3674,11 @@ function hadGenerationYet(history: ChatMessage[]): boolean {
   return history.some(
     (m) =>
       m.role === "assistant" &&
-      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(
+      // English + Chinese + Vietnamese generation markers. The studio streams a
+      // localized progress log ("Lên storyboard xong", "Xong khung N/N"), so the
+      // English-only patterns missed real generations and the flow restarted at
+      // the opener on every follow-up.
+      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)|storyboard xong|Xong khung|khung \d+\/\d+/i.test(
         m.content,
       ),
   );

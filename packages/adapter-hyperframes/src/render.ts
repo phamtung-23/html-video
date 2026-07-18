@@ -349,13 +349,15 @@ export async function render(
       // are already excluded above, so `needed` is the finite time the entrance/
       // reveal animation needs to fully play out.
       const needed = Math.min(30, (animMs + 400) / 1000);
-      // The requested per-frame length is a MINIMUM/target, never a mid-animation
-      // cut: if the animation genuinely needs more time than the requested length
-      // (e.g. a fit shortened the frame below its animation), extend so the effect
-      // plays out from start to finish instead of being chopped. When the
-      // animation fits (the normal case — templates are authored to settle within
-      // the frame), this is a no-op and the requested length holds.
-      if (needed > totalDuration) {
+      // Extend only in 'auto' mode (single-frame preview, where the length is
+      // unknown so we grow to fit the entrance animation). In 'explicit' mode
+      // (multi-frame export) the per-frame length is AUTHORITATIVE — it was set
+      // to match the narration/pacing — so it must be a HARD CAP. Otherwise a
+      // frame whose animation is long, or is mis-probed (e.g. an infinite GSAP
+      // `repeat:-1` loop the walker reads as ~30s), balloons past its slot and
+      // desyncs the whole video from the audio (a 5s hook rendered 30s → the
+      // narration for later frames plays while frame 1 is still on screen).
+      if (needed > totalDuration && input.config.durationMode !== "explicit") {
         ctx.onProgress?.(
           38,
           `extending to ${needed.toFixed(1)}s so the animation finishes`,

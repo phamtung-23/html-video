@@ -2,6 +2,8 @@
 # Usage:  make            # start the studio (default)
 #         make dev        # build everything, then start the studio
 #         make studio PORT=3080
+# 
+# lsof -ti:3071 | xargs kill
 #
 # Recipe lines are TAB-indented (Make requirement).
 
