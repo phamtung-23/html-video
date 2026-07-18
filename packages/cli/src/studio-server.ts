@@ -57,6 +57,17 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+// Shared narration-drafting rule (single-frame + global prompts). The voiceover
+// is spoken by Edge-TTS, which — for the default Vietnamese voice — mispronounces
+// raw English words (it spells them out). So we tell the scriptwriter to prefer a
+// natural Vietnamese term when one exists (reads well AND keeps burned captions
+// clean), and only phonetically respell terms that have no Vietnamese equivalent.
+const NARRATION_PRONUNCIATION_RULE =
+  "PRONUNCIATION — when writing in Vietnamese, the voice is a Vietnamese text-to-speech engine that stumbles over raw English. " +
+  "For each English technical term, FIRST use its natural Vietnamese equivalent when one exists (e.g. server → máy chủ, cache → bộ nhớ đệm, queue → hàng đợi, load balancer → bộ cân bằng tải, database → cơ sở dữ liệu, sharding → phân mảnh dữ liệu). " +
+  'Only when a term truly has no natural Vietnamese equivalent (brand/proper nouns, acronyms) respell it the way a Vietnamese speaker says it out loud (e.g. API → "ây-pi-ai", Redis → "re-đít", AWS → "ây-đắp-liu-ét"). ' +
+  "Never leave a bare English word for the voice to trip over. This rule applies only to Vietnamese narration; other languages keep terms as-is.";
+
 function resolveUiRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
@@ -745,6 +756,7 @@ export async function startStudioServer(
               target.idx === allFrames.length - 1
                 ? "This is the FINAL frame: land a memorable payoff or takeaway."
                 : "",
+              NARRATION_PRONUNCIATION_RULE,
               "Conversational, high-energy, spoken rhythm — short and easy to say out loud. Same language as the frame text. Plain text only: just the sentence, no numbering, quotes, or markdown.",
             ]
               .filter((l) => l !== undefined)
@@ -777,6 +789,7 @@ export async function startStudioServer(
               "- The LAST line lands a memorable payoff or takeaway; a light call-to-action is welcome.",
               "- Conversational, high-energy, spoken rhythm — short, punchy sentences that are easy to say out loud in one breath.",
               "- The lines should still flow as ONE continuous voiceover read top to bottom.",
+              `- ${NARRATION_PRONUNCIATION_RULE}`,
               "- Same language as the frame text. Plain text only: one sentence per line, no numbering, bullets, blank lines, or markdown.",
             ]
               .filter((l) => l !== undefined)
