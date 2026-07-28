@@ -19,6 +19,7 @@ import {
   projectRender,
   projectNarrate,
 } from './commands/project.js';
+import { installVieNeu } from './commands/tts.js';
 import { startStudioServer } from './studio-server.js';
 
 // cac is a CJS default export; ESM interop sometimes wraps it in `.default`
@@ -192,7 +193,7 @@ cli
   .command('project-narrate <id>', 'Generate narration (free Edge-TTS) and attach it')
   .option('--text <text>', 'Narration text')
   .option('--text-file <path>', 'Read narration text from a file')
-  .option('--voice <voice>', 'Edge voice id (e.g. vi-VN-HoaiMyNeural / vi-VN-NamMinhNeural)')
+  .option('--voice <voice>', 'Voice id — Edge (e.g. vi-VN-HoaiMyNeural) or VieNeu (e.g. "vieneu:Trúc Ly")')
   .option('--volume-db <db>', 'Narration gain in dB at mux time')
   .action(async (id: string, opts: any) => {
     setJsonMode(!!opts.json);
@@ -203,6 +204,21 @@ cli
       ...(opts.voice !== undefined && { voice: opts.voice }),
       ...(opts.volumeDb !== undefined && { volumeDb: Number(opts.volumeDb) }),
     });
+  });
+
+// ====== TTS management ======
+
+cli
+  .command('tts <action>', 'Manage extra narration voices (action: install-vieneu)')
+  .option('--warmup', 'Also download the VieNeu model now (first-run only)')
+  .action(async (action: string, opts: any) => {
+    setJsonMode(!!opts.json);
+    const ctx = await bootstrap({ cwd: opts.cwd });
+    if (action === 'install-vieneu') {
+      await installVieNeu(ctx, { warmup: !!opts.warmup });
+    } else {
+      fail('invalid-input', `unknown tts action: ${action} (expected: install-vieneu)`);
+    }
   });
 
 // ====== Studio (HTML Anything-style three-pane UI) ======

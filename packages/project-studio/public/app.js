@@ -130,24 +130,78 @@ function setTheme(theme) {
 applyTheme(getTheme());
 applySavedTextfieldsWidth();
 
-// Narration voices (free, key-less Edge-TTS). `key` maps to a localized label
-// (soundtrack.voice_<key>); the value is the Edge voice id.
-// All Edge-TTS (free, key-less) neural voices. The server accepts any
-// locale-prefixed voice id, so adding one here is all that's needed.
-const NARRATION_VOICES = [
-  // Tiếng Việt
-  { key: "vi_female_edge", voiceId: "vi-VN-HoaiMyNeural" },
-  { key: "vi_male_edge", voiceId: "vi-VN-NamMinhNeural" },
-  // English — US
-  { key: "en_us_male_guy", voiceId: "en-US-GuyNeural" },
-  { key: "en_us_male_christopher", voiceId: "en-US-ChristopherNeural" },
-  { key: "en_us_male_eric", voiceId: "en-US-EricNeural" },
-  { key: "en_us_female_aria", voiceId: "en-US-AriaNeural" },
-  { key: "en_us_female_jenny", voiceId: "en-US-JennyNeural" },
-  // English — UK
-  { key: "en_gb_male_ryan", voiceId: "en-GB-RyanNeural" },
-  { key: "en_gb_female_sonia", voiceId: "en-GB-SoniaNeural" },
+// Narration voices. Two free, key-less engines:
+//  • Edge-TTS (online): locale-prefixed ids (e.g. "vi-VN-HoaiMyNeural"). `key`
+//    maps to a localized label (soundtrack.voice_<key>).
+//  • VieNeu-TTS (offline): 14 Vietnamese voices, ids prefixed "vieneu:" — the
+//    server routes these to the offline engine. Labels are built from the
+//    voice's name + gender + region (proper nouns; no per-voice i18n key).
+// `group` buckets options into <optgroup>s; adding a voice here is all it takes.
+const VIENEU_VOICES = [
+  { name: "Minh Đức", gender: "male", region: "bac" },
+  { name: "Phạm Tuyên", gender: "male", region: "bac" },
+  { name: "Thanh Bình", gender: "male", region: "bac" },
+  { name: "Trúc Ly", gender: "female", region: "bac" },
+  { name: "Ngọc Linh", gender: "female", region: "bac" },
+  { name: "Đoan Trang", gender: "female", region: "bac" },
+  { name: "Mai Anh", gender: "female", region: "bac" },
+  { name: "Quang Sơn", gender: "male", region: "trung" },
+  { name: "Ngọc Trân", gender: "female", region: "trung" },
+  { name: "Xuân Vĩnh", gender: "male", region: "nam" },
+  { name: "Thái Sơn", gender: "male", region: "nam" },
+  { name: "Minh Triết", gender: "male", region: "nam" },
+  { name: "Thục Đoan", gender: "female", region: "nam" },
+  { name: "Thùy Dung", gender: "female", region: "nam" },
 ];
+const NARRATION_VOICES = [
+  // Tiếng Việt — Edge (online)
+  { group: "vi_edge", key: "vi_female_edge", voiceId: "vi-VN-HoaiMyNeural" },
+  { group: "vi_edge", key: "vi_male_edge", voiceId: "vi-VN-NamMinhNeural" },
+  // Tiếng Việt — VieNeu (offline, 14 voices). Label built at render time so it
+  // follows language switches (name + gender + region).
+  ...VIENEU_VOICES.map((v) => ({
+    group: "vieneu",
+    voiceId: `vieneu:${v.name}`,
+    name: v.name,
+    gender: v.gender,
+    region: v.region,
+  })),
+  // English — US
+  { group: "en", key: "en_us_male_guy", voiceId: "en-US-GuyNeural" },
+  { group: "en", key: "en_us_male_christopher", voiceId: "en-US-ChristopherNeural" },
+  { group: "en", key: "en_us_male_eric", voiceId: "en-US-EricNeural" },
+  { group: "en", key: "en_us_female_aria", voiceId: "en-US-AriaNeural" },
+  { group: "en", key: "en_us_female_jenny", voiceId: "en-US-JennyNeural" },
+  // English — UK
+  { group: "en", key: "en_gb_male_ryan", voiceId: "en-GB-RyanNeural" },
+  { group: "en", key: "en_gb_female_sonia", voiceId: "en-GB-SoniaNeural" },
+];
+// Ordered <optgroup> buckets → localized group label key.
+const NARRATION_VOICE_GROUPS = [
+  { id: "vi_edge", labelKey: "soundtrack.voicegroup_vi_edge" },
+  { id: "vieneu", labelKey: "soundtrack.voicegroup_vieneu" },
+  { id: "en", labelKey: "soundtrack.voicegroup_en" },
+];
+
+// Localized label for one voice option (resolved at render time so it follows
+// language switches). Edge voices use their i18n key; VieNeu voices are built
+// from name + gender + region.
+function narrationVoiceLabel(v) {
+  if (v.name) {
+    return `${v.name} · ${t(`soundtrack.g_${v.gender}`)} · ${t(`soundtrack.r_${v.region}`)}`;
+  }
+  return t(`soundtrack.voice_${v.key}`);
+}
+
+// Build the <optgroup>-grouped <option> markup for the narration voice picker.
+function narrationVoiceOptionsHtml() {
+  return NARRATION_VOICE_GROUPS.map((g) => {
+    const opts = NARRATION_VOICES.filter((v) => v.group === g.id)
+      .map((v) => `<option value="${v.voiceId}">${narrationVoiceLabel(v)}</option>`)
+      .join("");
+    return opts ? `<optgroup label="${t(g.labelKey)}">${opts}</optgroup>` : "";
+  }).join("");
+}
 
 const API = {
   projects: () => fetch("/api/projects").then((r) => r.json()),
@@ -1108,7 +1162,7 @@ function renderMain() {
                     <div class="st-voice-row">
                       <span class="st-voice-label">${t("soundtrack.voice_label")}</span>
                       <select id="st-narration-voice" class="st-voice-select">
-                        ${NARRATION_VOICES.map((v) => `<option value="${v.voiceId}">${t(`soundtrack.voice_${v.key}`)}</option>`).join("")}
+                        ${narrationVoiceOptionsHtml()}
                       </select>
                     </div>
                     <div class="st-vol-row"><label>${t("soundtrack.narration_volume")} <input type="range" id="st-narration-vol" min="-20" max="6" value="0" /><b id="st-narration-vol-val">0 dB</b></label></div>

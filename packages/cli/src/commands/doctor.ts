@@ -126,6 +126,25 @@ export async function runDoctor(ctx: CliContext): Promise<void> {
     });
   }
 
+  // VieNeu-TTS (free, offline, 14 Vietnamese voices). Optional: a warning, never
+  // an error — Edge-TTS remains the default when this is absent.
+  if (tts.vieneuAvailable) {
+    checks.push({
+      name: "vieneu-tts",
+      status: "ok",
+      value: tts.vieneuVoice,
+      detail: "offline Vietnamese narration available (VieNeu-TTS, 14 voices)",
+    });
+  } else {
+    checks.push({
+      name: "vieneu-tts",
+      status: "warning",
+      detail:
+        "Extra offline Vietnamese voices disabled. Install: html-video tts install-vieneu",
+      install_hint: "html-video tts install-vieneu  (or: pip install vieneu)",
+    });
+  }
+
   const overall: "ok" | "warning" | "error" = checks.some(
     (c) => c.status === "error",
   )

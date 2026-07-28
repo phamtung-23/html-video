@@ -132,7 +132,7 @@ export const amr: AgentDef = {
 
 /** Preferred ordering — surface the cheap/fast default + flagships first. */
 const AMR_MODEL_RANK: ReadonlyMap<string, number> = new Map(
-  ['deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-4.8', 'claude-sonnet-4.6', 'gpt-5.5', 'gemini-3.1-pro-preview']
+  ['deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-5', 'claude-sonnet-4.6', 'gpt-5.5', 'gemini-3.1-pro-preview']
     .map((id, i) => [id, i]),
 );
 

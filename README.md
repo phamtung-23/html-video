@@ -76,6 +76,7 @@ Steps ②–④ are the "meta-layer": the agent decides the storyboard, the engi
 | **ffmpeg** | recent (a **libass**-enabled build for burned captions) | `ffmpeg -version` |
 | **Chromium** (or Playwright browsers) | — | `npx playwright install chromium` |
 | **edge-tts** *(optional, for narration)* | — | `pipx install edge-tts` |
+| **vieneu** *(optional, +14 offline Vietnamese voices)* | Python 3.10+ | `html-video tts install-vieneu` |
 
 The default engine records animated HTML in headless Chromium, then ffmpeg (libx264) encodes MP4. Install Playwright's Chromium if you don't have a system Chrome. Burned word-by-word captions need an ffmpeg built with `libass` — the `Makefile` will prefer a bundled ffmpeg at `.html-video/bin/ffmpeg` if present, otherwise it falls back to system ffmpeg.
 
@@ -121,12 +122,16 @@ A data frame rendered as a static Hyperframes chart can be upgraded ("enhanced")
 
 Give the finished video a voice — for free, no API key.
 
-- **Narration** — type a script (per-frame or whole-video); **Edge-TTS** (Microsoft) synthesizes it. Vietnamese voices ship by default (`vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural`), with English US/UK available. Adjustable volume (−20…+6 dB) and speed (0.5…1.5×). An AI-draft button writes a scroll-stopping short-form script from your content-graph.
+- **Narration** — type a script (per-frame or whole-video) and pick a voice from two free, key-less engines:
+  - **Edge-TTS** (Microsoft, online) — the default. Two Vietnamese voices (`vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural`) plus English US/UK.
+  - **VieNeu-TTS** (offline, optional) — **14 more Vietnamese voices** covering Northern / Central / Southern accents, both genders, in natural / news / storytelling styles. Runs fully on the CPU (ONNX, no GPU, no network). Install once with `html-video tts install-vieneu`; pick a `vieneu:` voice in the narration panel.
+
+  Adjustable volume (−20…+6 dB) and speed (0.5…1.5×). An AI-draft button writes a scroll-stopping short-form script from your content-graph.
 - **Word-by-word captions** — generated from the narration's own timing and **burned in** via ffmpeg's `ass` filter (two-layer glow + box style), revealing one word at a time.
 - **Fit to narration** — re-paces each frame's duration to match the length of its voiceover.
 - **Music** — an optional background track is mixed under the voice (ducked, with fade in/out); the audio is padded so the last scene is never cut short.
 
-Both narration and music are mixed into the exported MP4 at export time. No `edge-tts` installed? The rest of the studio works unchanged.
+Both narration and music are mixed into the exported MP4 at export time. No narration engine installed? The rest of the studio works unchanged.
 
 ---
 

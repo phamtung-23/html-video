@@ -22,6 +22,17 @@ export {
   EDGE_TTS_DEFAULT_VOICE,
 } from './edge-tts.js';
 export type { EdgeTtsCommand, TtsAudioResult } from './edge-tts.js';
+export {
+  generateTtsVieNeu,
+  resolveVieNeuCommand,
+  vieneuVenvPython,
+  findVieNeuVoice,
+  synthesizeCaptionCues,
+  stopAllVieNeuWorkers,
+  VIENEU_VIETNAMESE_VOICES,
+  VIENEU_DEFAULT_VOICE,
+} from './vieneu-tts.js';
+export type { VieNeuCommand, VieNeuVoice, VieNeuStyle } from './vieneu-tts.js';
 export { buildCaptionAss, parseSrtCues } from './subtitles.js';
 export type { CaptionCue, CaptionStyleOpts } from './subtitles.js';
 export { ffmpegBin, ffprobeBin } from './ffmpeg.js';

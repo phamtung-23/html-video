@@ -8,7 +8,8 @@ overview see [README.md](README.md); for a function-level tour of every package 
 
 `html-video` is a local **HTML→video meta-layer**: a coding agent generates HTML "frames",
 the system renders each frame to MP4 through a pluggable engine (Hyperframes or Remotion),
-concatenates them, mixes in **free Edge-TTS narration** + **word-by-word burned captions**,
+concatenates them, mixes in **free narration** (Edge-TTS online, or offline VieNeu-TTS
+with 14 Vietnamese voices) + **word-by-word burned captions**,
 and can **publish to YouTube Shorts / Facebook Reels**. It ships a local browser studio
 (bilingual Vietnamese / English, Vietnamese-first) and a scriptable `html-video` CLI.
 
@@ -21,7 +22,7 @@ meta-layer (engine adapters, content-graph, template registry) comes from upstre
 ```
 packages/
   content-graph/       Storyboard IR: node/edge schema + validate + topoSort + totalDurationSec
-  core/                Orchestrator, registries, asset store, Edge-TTS, captions, ffmpeg concat/mux
+  core/                Orchestrator, registries, asset store, Edge-TTS + VieNeu-TTS, captions, ffmpeg concat/mux
   adapter-hyperframes/ Default engine: Playwright + headless Chromium → webm → ffmpeg mp4
   adapter-remotion/    Remotion engine: bridge (HTML→timeline) + native (.tsx data) modes
   runtime/             Detect / spawn / stream 14 coding-agent backends (plain CLI, ACP, HTTP)
@@ -92,6 +93,16 @@ The studio UI and generated content are Vietnamese-first. Notably `parseFormatRe
 backward-compat but **returns Vietnamese labels** (`16:9 Ngang` / `9:16 Dọc` / `1:1 Vuông` /
 `4:5 RedNote`). The unit tests in `cli/test/parse-format-reply.test.ts` assert the Vietnamese
 outputs. Edge-TTS default voice is `vi-VN-HoaiMyNeural`.
+
+**Narration engines.** Two free, key-less providers behind a shared `TtsAudioResult`
+(bytes + optional `boundaries` caption cues): `core/edge-tts.ts` (online, 2 VN voices)
+and `core/vieneu-tts.ts` (offline, 14 VN voices, ONNX/CPU via a persistent Python worker
+in `.html-video/vieneu-venv`). **Routing is by voice-id namespace**: a `vieneu:<preset>`
+id (studio-server + `project-narrate`) picks VieNeu; anything else is Edge. VieNeu has no
+native rate control (speed → ffmpeg `atempo`) and no subtitle timing (caption cues are
+synthesized by distributing the measured duration across sentences). The worker is warm
+across a studio session (`stopAllVieNeuWorkers()` on shutdown) but stopped after each
+one-shot CLI run so the process can exit. Install: `html-video tts install-vieneu`.
 
 ## Known gaps / tech debt
 

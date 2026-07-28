@@ -9,7 +9,12 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveEdgeTtsCommand, EDGE_TTS_DEFAULT_VOICE } from '@html-video/core';
+import {
+  resolveEdgeTtsCommand,
+  EDGE_TTS_DEFAULT_VOICE,
+  resolveVieNeuCommand,
+  VIENEU_DEFAULT_VOICE,
+} from '@html-video/core';
 
 interface YouTubeAccount {
   id: string;
@@ -18,7 +23,7 @@ interface YouTubeAccount {
 }
 
 interface MediaConfig {
-  tts?: { edgeVoice?: string };
+  tts?: { edgeVoice?: string; vieneuVoice?: string };
   youtube?: {
     clientId?: string;
     clientSecret?: string;
@@ -80,19 +85,55 @@ export class MediaConfigStore {
     this.write(cfg);
   }
 
+  /** Voice for VieNeu-TTS. config file → HV_VIENEU_VOICE env → built-in default. */
+  getVieneuVoice(): string {
+    return (
+      this.read().tts?.vieneuVoice ||
+      (process.env.HV_VIENEU_VOICE || '').trim() ||
+      VIENEU_DEFAULT_VOICE
+    );
+  }
+
+  /** Persist the chosen VieNeu voice (preset id). */
+  setVieneuVoice(voice: string): void {
+    const v = (voice ?? '').trim();
+    if (!v) return;
+    const cfg = this.read();
+    cfg.tts = { ...(cfg.tts ?? {}), vieneuVoice: v };
+    this.write(cfg);
+  }
+
   /** Is the free Edge-TTS engine usable on this machine? */
   edgeAvailable(): boolean {
     return resolveEdgeTtsCommand({ projectRoot: this.projectRoot }) !== null;
   }
 
-  /** The narration engine — always Edge-TTS when available, else null. */
-  resolveNarrationProvider(): 'edge' | null {
-    return this.edgeAvailable() ? 'edge' : null;
+  /** Is the free, offline VieNeu-TTS engine usable on this machine? */
+  vieneuAvailable(): boolean {
+    return resolveVieNeuCommand({ projectRoot: this.projectRoot }) !== null;
+  }
+
+  /** The default narration engine — Edge-TTS when available, else VieNeu, else null.
+   *  (Per-request routing is by voice id; this is only the fallback default.) */
+  resolveNarrationProvider(): 'edge' | 'vieneu' | null {
+    if (this.edgeAvailable()) return 'edge';
+    if (this.vieneuAvailable()) return 'vieneu';
+    return null;
   }
 
   /** Status payload for the Settings UI / doctor. */
-  getTtsStatus(): { edgeAvailable: boolean; edgeVoice: string } {
-    return { edgeAvailable: this.edgeAvailable(), edgeVoice: this.getEdgeVoice() };
+  getTtsStatus(): {
+    edgeAvailable: boolean;
+    edgeVoice: string;
+    vieneuAvailable: boolean;
+    vieneuVoice: string;
+  } {
+    return {
+      edgeAvailable: this.edgeAvailable(),
+      edgeVoice: this.getEdgeVoice(),
+      vieneuAvailable: this.vieneuAvailable(),
+      vieneuVoice: this.getVieneuVoice(),
+    };
   }
 
   // ── YouTube (personal channels) OAuth — supports multiple accounts ─────────

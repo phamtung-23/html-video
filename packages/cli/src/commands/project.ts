@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { CliContext } from '../context.js';
 import { fail, ok, progress } from '../output.js';
-import { generateTtsEdge } from '@html-video/core';
+import { generateTtsEdge, generateTtsVieNeu, stopAllVieNeuWorkers } from '@html-video/core';
 
 export async function projectCreate(
   ctx: CliContext,
@@ -179,18 +179,37 @@ export async function projectNarrate(
   text = text.trim();
   if (!text) fail('invalid-input', 'provide narration text via --text or --text-file');
 
-  if (!ctx.mediaConfig.edgeAvailable()) {
-    fail(
-      'render-failed',
-      'Edge-TTS not found. Install it (free, no key): `pipx install edge-tts` or `python3 -m pip install edge-tts`.',
-    );
-  }
+  // Route by voice id: a "vieneu:" prefix picks the offline VieNeu-TTS engine
+  // (14 Vietnamese voices); anything else uses Edge-TTS.
+  const reqVoice = opts.voice ?? '';
+  const useVieneu = reqVoice.startsWith('vieneu:');
 
-  const nar = await generateTtsEdge({
-    text,
-    voiceId: opts.voice ?? ctx.mediaConfig.getEdgeVoice(),
-    projectRoot: ctx.projectRoot,
-  });
+  let nar: Awaited<ReturnType<typeof generateTtsEdge>>;
+  if (useVieneu) {
+    if (!ctx.mediaConfig.vieneuAvailable()) {
+      fail(
+        'render-failed',
+        'VieNeu-TTS not found. Install it (free, offline): `html-video tts install-vieneu` or `pip install vieneu`.',
+      );
+    }
+    nar = await generateTtsVieNeu({
+      text,
+      voiceId: reqVoice.slice('vieneu:'.length),
+      projectRoot: ctx.projectRoot,
+    });
+  } else {
+    if (!ctx.mediaConfig.edgeAvailable()) {
+      fail(
+        'render-failed',
+        'Edge-TTS not found. Install it (free, no key): `pipx install edge-tts` or `python3 -m pip install edge-tts`.',
+      );
+    }
+    nar = await generateTtsEdge({
+      text,
+      voiceId: opts.voice ?? ctx.mediaConfig.getEdgeVoice(),
+      projectRoot: ctx.projectRoot,
+    });
+  }
 
   const { asset } = await ctx.orchestrator.addBufferAsset(
     id,
@@ -208,9 +227,13 @@ export async function projectNarrate(
   project.soundtrack = soundtrack;
   await ctx.projects.save(project);
 
+  // One-shot CLI: stop the persistent VieNeu worker so the process can exit
+  // (the warm worker's piped stdio would otherwise keep the event loop alive).
+  if (useVieneu) stopAllVieNeuWorkers();
+
   ok({
     project_id: id,
-    provider: 'edge',
+    provider: useVieneu ? 'vieneu' : 'edge',
     asset_id: asset.id,
     duration_sec: nar.durationSec ?? null,
     provider_note: nar.providerNote,

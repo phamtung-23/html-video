@@ -18,6 +18,8 @@ import type { CliContext } from "./context.js";
 import {
   AssetStore,
   generateTtsEdge,
+  generateTtsVieNeu,
+  stopAllVieNeuWorkers,
   probeDurationSec,
 } from "@html-video/core";
 import { extractUrls, fetchSource } from "./fetch-source.js";
@@ -598,45 +600,69 @@ export async function startStudioServer(
             return;
           }
 
-          // Narration uses the free, key-less Edge-TTS engine.
-          if (!ctx.mediaConfig.edgeAvailable()) {
-            sse({
-              type: "audio_failed",
-              message:
-                "No narration engine available — install Edge-TTS (free, no key): `pipx install edge-tts`.",
-            });
-            res.end();
-            return;
-          }
-
+          // Narration routes by voice id: a "vieneu:" prefix picks the offline
+          // VieNeu-TTS engine (14 Vietnamese voices); anything else is Edge-TTS.
           {
+            const reqVoice = body.narration!.voiceId;
+            const useVieneu = !!reqVoice && reqVoice.startsWith("vieneu:");
+            if (useVieneu && !ctx.mediaConfig.vieneuAvailable()) {
+              sse({
+                type: "audio_failed",
+                message:
+                  "VieNeu-TTS not installed — run `html-video tts install-vieneu` (free, offline), or pick an Edge voice.",
+              });
+              res.end();
+              return;
+            }
+            if (!useVieneu && !ctx.mediaConfig.edgeAvailable()) {
+              sse({
+                type: "audio_failed",
+                message:
+                  "No narration engine available — install Edge-TTS (free, no key): `pipx install edge-tts`.",
+              });
+              res.end();
+              return;
+            }
+
             const narText = body.narration!.text!.trim();
             sse({
               type: "audio_progress",
               stage: "narration",
-              message: "generating narration…",
+              message: useVieneu
+                ? "generating narration (VieNeu, offline)…"
+                : "generating narration…",
             });
-            // Honor a requested voice only when it looks like an Edge voice
-            // (locale-prefixed, e.g. "vi-VN-HoaiMyNeural"); else use the
-            // configured/default Edge voice.
-            const reqVoice = body.narration!.voiceId;
-            const edgeVoice =
-              reqVoice && /^[a-z]{2}-[A-Z]{2}-/.test(reqVoice)
-                ? reqVoice
-                : ctx.mediaConfig.getEdgeVoice();
-            // Speaking rate (0.5–1.5×). Clamp defensively; generateTtsEdge maps
-            // it to edge-tts's --rate flag.
+            // Speaking rate (0.5–1.5×). Clamp defensively.
             const reqSpeed = body.narration!.speed;
             const speed =
               typeof reqSpeed === "number" && Number.isFinite(reqSpeed)
                 ? Math.min(1.5, Math.max(0.5, reqSpeed))
                 : 1;
-            const nar = await generateTtsEdge({
-              text: narText,
-              voiceId: edgeVoice,
-              speed,
-              projectRoot: ctx.projectRoot,
-            });
+            let nar: Awaited<ReturnType<typeof generateTtsEdge>>;
+            if (useVieneu) {
+              // Strip the "vieneu:" prefix to get the preset voice id.
+              const preset = reqVoice!.slice("vieneu:".length);
+              nar = await generateTtsVieNeu({
+                text: narText,
+                voiceId: preset,
+                speed,
+                projectRoot: ctx.projectRoot,
+              });
+            } else {
+              // Honor a requested voice only when it looks like an Edge voice
+              // (locale-prefixed, e.g. "vi-VN-HoaiMyNeural"); else use the
+              // configured/default Edge voice.
+              const edgeVoice =
+                reqVoice && /^[a-z]{2}-[A-Z]{2}-/.test(reqVoice)
+                  ? reqVoice
+                  : ctx.mediaConfig.getEdgeVoice();
+              nar = await generateTtsEdge({
+                text: narText,
+                voiceId: edgeVoice,
+                speed,
+                projectRoot: ctx.projectRoot,
+              });
+            }
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
               nar.bytes,
@@ -1683,16 +1709,22 @@ export async function startStudioServer(
         return;
       }
 
-      // Narration TTS config — GET status, POST to set the Edge-TTS voice.
-      // Narration uses the free, key-less Edge-TTS engine (no credentials).
+      // Narration TTS config — GET status, POST to set the default voice(s).
+      // Two free, key-less engines: Edge-TTS (online) and VieNeu-TTS (offline).
       if (url.pathname === "/api/config/tts" && m === "GET") {
         return json(res, 200, ctx.mediaConfig.getTtsStatus());
       }
       if (url.pathname === "/api/config/tts" && m === "POST") {
-        const body = (await readBody(req)) as { edgeVoice?: string };
-        const voice = (body.edgeVoice ?? "").trim();
-        if (!voice) return json(res, 400, { error: "edgeVoice is required" });
-        ctx.mediaConfig.setEdgeVoice(voice);
+        const body = (await readBody(req)) as {
+          edgeVoice?: string;
+          vieneuVoice?: string;
+        };
+        const edge = (body.edgeVoice ?? "").trim();
+        const vieneu = (body.vieneuVoice ?? "").trim();
+        if (!edge && !vieneu)
+          return json(res, 400, { error: "edgeVoice or vieneuVoice is required" });
+        if (edge) ctx.mediaConfig.setEdgeVoice(edge);
+        if (vieneu) ctx.mediaConfig.setVieneuVoice(vieneu);
         return json(res, 200, ctx.mediaConfig.getTtsStatus());
       }
 
@@ -2754,7 +2786,10 @@ export async function startStudioServer(
       resolveFn({
         url: `http://127.0.0.1:${actualPort}`,
         port: actualPort,
-        close: () => server.close(),
+        close: () => {
+          stopAllVieNeuWorkers();
+          server.close();
+        },
       });
     });
   });
