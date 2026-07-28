@@ -1,6 +1,6 @@
-/* Design tokens — refreshed to the Hyperframes (heygen.com/hyperframes) visual
- * language: warm paper-white surfaces, mint-green accent, warm-grey hairline
- * borders, tight radii, near-shadowless, mono-forward "code editor" feel.
+/* Design tokens — warm paper-white surfaces, Claude clay-orange (#d97757)
+ * accent, warm-grey hairline borders, tight radii, near-shadowless,
+ * mono-forward "code editor" feel.
  * Only token VALUES changed — the studio layout/structure is untouched. */
 :root {
   /* Surfaces — paper white + warm off-white panels (hyperframes #fff / #f6f5f1 / #f0efe9) */
@@ -14,11 +14,11 @@
   --text-muted: #6b6b6b;
   --text-faint: #aaaaaa;
 
-  /* Accent — mint green (hyperframes primary CTA #3ce6ac on dark text) */
-  --accent: #3ce6ac;
-  --accent-hover: #2fd49c;
-  --accent-soft: #d6f7ec;
-  --accent-fg: #0b0b0b;
+  /* Accent — Claude clay-orange (#d97757, white text on the CTA) */
+  --accent: #d97757;
+  --accent-hover: #c15f3f;
+  --accent-soft: #f7e4da;
+  --accent-fg: #ffffff;
 
   /* Border — warm grey hairline (hyperframes #e0dfdb) */
   --border: #e0dfdb;
@@ -74,10 +74,10 @@
     --text-muted: #9a9a96;
     --text-faint: #555552;
 
-    --accent: #3ce6ac;
-    --accent-hover: #54ecb9;
-    --accent-soft: #103a2c;
-    --accent-fg: #0b0b0b;
+    --accent: #d97757;
+    --accent-hover: #e08a6d;
+    --accent-soft: #3a2018;
+    --accent-fg: #ffffff;
 
     --border: #2a2a28;
     --border-strong: #3a3a36;
@@ -99,10 +99,10 @@
   --text-muted: #9a9a96;
   --text-faint: #555552;
 
-  --accent: #3ce6ac;
-  --accent-hover: #54ecb9;
-  --accent-soft: #103a2c;
-  --accent-fg: #0b0b0b;
+  --accent: #d97757;
+  --accent-hover: #e08a6d;
+  --accent-soft: #3a2018;
+  --accent-fg: #ffffff;
 
   --border: #2a2a28;
   --border-strong: #3a3a36;
