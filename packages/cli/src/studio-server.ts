@@ -44,6 +44,13 @@ interface StudioHandle {
   close: () => void;
 }
 
+// Max characters of USER-supplied text (opening message / outline, per-turn
+// content, pasted or attached source material) carried into the generation
+// prompts. Opus's 1M-token context easily fits a full script; this is a high
+// safety backstop (≈150 pages / ~50k tokens) so a pathological giant paste
+// can't blow up a single model call — not a "trim your outline" limit.
+const MAX_INPUT_CHARS = 200_000;
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -130,7 +137,7 @@ export async function startStudioServer(
             project.name = body.name.trim().slice(0, 80);
           }
           if (typeof body.intent === "string") {
-            project.intent = body.intent.slice(0, 280);
+            project.intent = body.intent.slice(0, MAX_INPUT_CHARS);
           }
           await ctx.projects.save(project);
           return json(res, 200, { project: await ctx.orchestrator.load(id) });
@@ -1722,7 +1729,9 @@ export async function startStudioServer(
         const edge = (body.edgeVoice ?? "").trim();
         const vieneu = (body.vieneuVoice ?? "").trim();
         if (!edge && !vieneu)
-          return json(res, 400, { error: "edgeVoice or vieneuVoice is required" });
+          return json(res, 400, {
+            error: "edgeVoice or vieneuVoice is required",
+          });
         if (edge) ctx.mediaConfig.setEdgeVoice(edge);
         if (vieneu) ctx.mediaConfig.setVieneuVoice(vieneu);
         return json(res, 200, ctx.mediaConfig.getTtsStatus());
@@ -1904,7 +1913,7 @@ export async function startStudioServer(
                 ) {
                   try {
                     const txt = await readFile(newAsset.path, "utf8");
-                    if (txt.length <= 20_000) att.inlineText = txt;
+                    if (txt.length <= MAX_INPUT_CHARS) att.inlineText = txt;
                   } catch {
                     /* fall back to path-only */
                   }
@@ -2065,7 +2074,7 @@ export async function startStudioServer(
             let inlineText: string | undefined;
             try {
               const txt = await readFile(asset.path, "utf8");
-              if (txt.length <= 20_000) inlineText = txt;
+              if (txt.length <= MAX_INPUT_CHARS) inlineText = txt;
             } catch {
               /* path-only fallback */
             }
@@ -2125,6 +2134,7 @@ export async function startStudioServer(
         // Mark this project as generating so a returning client knows the task
         // is still alive. Cleared in the finally below (covers all exit paths).
         GENERATING.add(id);
+        GEN_PROGRESS.set(id, "");
         try {
           // SSE response
           res.writeHead(200, {
@@ -2290,6 +2300,8 @@ export async function startStudioServer(
                 onProgress: (msg) => {
                   assistantText += `${msg}\n`;
                   textChunks += 1;
+                  // Record for a returning client (replayed via /generating).
+                  GEN_PROGRESS.set(id, (GEN_PROGRESS.get(id) ?? "") + `${msg}\n`);
                   sseWrite({ type: "text", chunk: `${msg}\n` });
                 },
                 onSse: sseWrite,
@@ -2506,6 +2518,9 @@ export async function startStudioServer(
           return;
         } finally {
           GENERATING.delete(id);
+          // Keep the final log a moment so a client polling right at the finish
+          // still replays it; it's superseded by the persisted message on reload.
+          GEN_PROGRESS.delete(id);
         }
       }
 
@@ -2518,6 +2533,7 @@ export async function startStudioServer(
       if (genStatusMatch && genStatusMatch[1] && m === "GET") {
         return json(res, 200, {
           generating: GENERATING.has(genStatusMatch[1]),
+          progress: GEN_PROGRESS.get(genStatusMatch[1]) ?? "",
         });
       }
 
@@ -3108,6 +3124,11 @@ const MESSAGES = new Map<string, ChatMessage[]>();
  *  ("⏳ still generating…") instead of seeing the progress lines vanish. */
 const GENERATING = new Set<string>();
 
+/** Live progress log per generating project, so a client that switched away and
+ *  came back can replay the full "✓ Xong khung X…" progress (via /generating),
+ *  not just a static "still generating" line. Cleared when the run finishes. */
+const GEN_PROGRESS = new Map<string, string>();
+
 async function loadMessages(
   ctx: CliContext,
   projectId: string,
@@ -3281,9 +3302,7 @@ function detectPhase(
     inputs.pickedType = lastCardPickByPhase(history, "type");
     inputs.pickedStyle = lastCardPickByPhase(history, "style") ?? "";
     inputs.contentTurns = collectContentTurns(history);
-    inputs.approvedBrief = trimmed
-      .slice("[hv-brief:approve]".length)
-      .trim();
+    inputs.approvedBrief = trimmed.slice("[hv-brief:approve]".length).trim();
     return { phase: "generate", inputs };
   }
   if (trimmed === "[hv-confirm:edit]") {
@@ -3593,6 +3612,14 @@ function isControlPhrase(t: string): boolean {
     .trim()
     .toLowerCase()
     .replace(/[。.!！~\s]+$/u, "");
+  // "Follow the outline I already sent" — a deferral, not literal on-screen
+  // content. Caught before the length cap because the phrase is longish.
+  if (
+    /bám theo dàn ý|theo dàn ý|dùng dàn ý|theo nội dung (tôi|mình) (gửi|đưa|cung cấp)|follow (my|the) outline|theo outline|按大纲|用大纲/i.test(
+      s,
+    )
+  )
+    return true;
   if (s.length > 14) return false; // real content is longer; keep it
   return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|tiếp|tiếp tục|bắt đầu|tạo|tạo đi|tiếp theo|được|xác nhận|đồng ý)$/u.test(
     s,
@@ -3667,12 +3694,12 @@ function resolveOpeningTopic(
   history: ChatMessage[],
 ): string {
   const fromIntent = project.intent?.trim();
-  if (fromIntent) return fromIntent.slice(0, 200);
+  if (fromIntent) return fromIntent.slice(0, MAX_INPUT_CHARS);
   const firstUser = history.find((m) => m.role === "user")?.content ?? "";
   const clean = (firstUser.split("\n\n📎")[0] ?? "").trim();
   // Don't lock onto a bare control phrase ("继续" / "ok") if that's somehow first.
   if (!clean || isControlPhrase(clean)) return "";
-  return clean.slice(0, 200);
+  return clean.slice(0, MAX_INPUT_CHARS);
 }
 
 // Legacy helper retained for backward calls — now delegates to detectPhase's
@@ -3909,7 +3936,7 @@ function renderDesignSpecBlock(specs: Attachment[]): string[] {
   ];
   for (const a of specs) {
     out.push(`--- ${a.filename} ---`);
-    out.push((a.inlineText ?? "").slice(0, 6000));
+    out.push((a.inlineText ?? "").slice(0, MAX_INPUT_CHARS));
   }
   out.push("");
   return out;
@@ -4122,6 +4149,9 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     p.push(
       `Goal: surface what the video is ABOUT (topic, brand / project name, headline / tagline, key numbers or data points). The user can answer, partially answer, or say "随便发挥 / skip / 不知道" — accept whatever they give and move on.`,
     );
+    p.push(
+      `If the user has already given an outline / content, ALSO offer the option "bám theo dàn ý tôi gửi" (build from the outline they sent). If they pick it (or reply "theo dàn ý / theo nội dung tôi gửi / follow my outline"), do NOT invent a different angle or keep asking — acknowledge in ONE short line that you'll follow their outline, and let the flow move on.`,
+    );
     p.push("");
     // The user's opening request already names the subject (e.g. "做一个 Open
     // Design 推广视频"). Lock onto it: don't let a vague follow-up answer like
@@ -4131,7 +4161,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       const openingTopic = history
         .find((m) => m.role === "user")
         ?.content?.trim()
-        .slice(0, 200);
+        .slice(0, MAX_INPUT_CHARS);
       if (openingTopic) {
         p.push(
           `The user's ORIGINAL opening request was: "${openingTopic}". Treat this as the LOCKED subject of the video unless the user clearly asks to change it.`,
@@ -4144,11 +4174,11 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     }
     if (turns.length === 0) {
       p.push(
-        `This is the first content turn. Ask 1–3 short, sharp questions, in the user's language. Keep it under 60 words. Mention they can answer fully, partially, or just say "skip" / "随便".`,
+        `This is the first content turn. Ask 1–3 short, sharp questions, in the user's language. Keep it under 60 words. Mention they can answer fully, partially, say "skip" / "随便", or "bám theo dàn ý tôi gửi" (build from the outline they already sent).`,
       );
     } else {
       p.push("The user has already shared:");
-      for (const t of turns) p.push(`  - ${t.slice(0, 200)}`);
+      for (const t of turns) p.push(`  - ${t.slice(0, MAX_INPUT_CHARS)}`);
       p.push("");
       p.push(
         `Either ask ONE more clarifying question, or — if you have enough — write a one-line confirmation like "Ok, mình đủ ý rồi, bước tiếp theo là phong cách." / "Got it. Next: style." and end with the marker. The server will move on to style automatically when your reply is short / affirmative or when this is your second clarifying round.`,
@@ -4262,12 +4292,12 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
       : (inputs.pickedType ?? "");
     const isMulti = !!pickedType && isMultiFrameType(pickedType);
     const defaults = {
-      aspect: pre.aspect ?? "16:9 Ngang",
-      duration: pre.duration ?? (isMulti ? "15" : "5"),
+      aspect: pre.aspect ?? "9:16 Dọc",
+      duration: pre.duration ?? (isMulti ? "20" : "5"),
       frame_count: pre.frame_count ?? (isMulti ? "4" : "1"),
-      // Per-frame pacing default 4s — comfortable, avoids the "rushed" feel a
+      // Per-frame pacing default 5s — comfortable, avoids the "rushed" feel a
       // short total ÷ many frames produces. Total is derived from this × frames.
-      per_frame: pre.per_frame ?? "4",
+      per_frame: pre.per_frame ?? "5",
     };
     const p: string[] = [];
     if (isEdit) {
@@ -4517,7 +4547,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     if (contentTurns.length > 0) {
       p.push("- 内容 / content (what the user told us in the chat):");
       for (const t of contentTurns)
-        p.push(`  · ${t.replace(/\n/g, " ").slice(0, 280)}`);
+        p.push(`  · ${t.replace(/\n/g, " ").slice(0, MAX_INPUT_CHARS)}`);
     } else {
       p.push(
         "- 内容 / content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)",
@@ -4855,9 +4885,7 @@ function extractHtmlDocument(text: string): string | null {
  * Returns null when no content-graph block is found (caller falls back to
  * single-frame extraction).
  */
-function extractContentGraphAndFrames(
-  text: string,
-): {
+function extractContentGraphAndFrames(text: string): {
   graph: import("@html-video/content-graph").ContentGraph;
   frames: { nodeId: string; html: string }[];
 } | null {
@@ -4977,7 +5005,7 @@ async function draftContentBrief(opts: {
   if (contentTurns.length > 0) {
     bp.push("User's notes:");
     for (const t of contentTurns)
-      bp.push(`- ${t.replace(/\n/g, " ").slice(0, 280)}`);
+      bp.push(`- ${t.replace(/\n/g, " ").slice(0, MAX_INPUT_CHARS)}`);
   }
   if (briefSources.length > 0) {
     bp.push(
@@ -4985,7 +5013,7 @@ async function draftContentBrief(opts: {
     );
     for (const a of briefSources) {
       bp.push(`--- ${a.filename} ---`);
-      bp.push((a.inlineText ?? "").slice(0, 6000));
+      bp.push((a.inlineText ?? "").slice(0, MAX_INPUT_CHARS));
     }
   } else {
     bp.push(
@@ -5177,7 +5205,9 @@ async function runSplitMultiFrameGenerate(
     if (contentTurns.length > 0) {
       graphPromptParts.push("- 内容 / content:");
       for (const t of contentTurns)
-        graphPromptParts.push(`  · ${t.replace(/\n/g, " ").slice(0, 280)}`);
+        graphPromptParts.push(
+          `  · ${t.replace(/\n/g, " ").slice(0, MAX_INPUT_CHARS)}`,
+        );
     }
     // Inline the fetched article / repo / uploaded text — THIS is the subject of
     // the video. Without it the planner only sees the type word and invents a
@@ -5194,7 +5224,7 @@ async function runSplitMultiFrameGenerate(
       );
       for (const a of sourceTexts) {
         graphPromptParts.push(`--- ${a.filename} ---`);
-        graphPromptParts.push((a.inlineText ?? "").slice(0, 6000));
+        graphPromptParts.push((a.inlineText ?? "").slice(0, MAX_INPUT_CHARS));
       }
     }
     // Step 0's content brief is the authoritative, already-organized content —
@@ -5204,7 +5234,7 @@ async function runSplitMultiFrameGenerate(
       graphPromptParts.push(
         "CONTENT BRIEF (authoritative — the researched/organized content for this video; build EVERY node from it, one frame per point, in order):",
       );
-      graphPromptParts.push(contentBrief.slice(0, 8000));
+      graphPromptParts.push(contentBrief.slice(0, MAX_INPUT_CHARS));
     }
     if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
     graphPromptParts.push(
@@ -5367,7 +5397,7 @@ async function runSplitMultiFrameGenerate(
         "Source material from the user (use literally; do NOT invent facts):",
       );
       for (const t of contentTurns)
-        fp.push(`  · ${t.replace(/\n/g, " ").slice(0, 280)}`);
+        fp.push(`  · ${t.replace(/\n/g, " ").slice(0, MAX_INPUT_CHARS)}`);
       fp.push("");
     }
     // Fetched article/repo text — keep the per-frame HTML grounded in the real
@@ -5525,10 +5555,12 @@ function describeNode(node: import("@html-video/content-graph").Node): string {
   const bits: string[] = [];
   if (node.label) bits.push(node.label);
   if ((node as { text?: string }).text)
-    bits.push(`text: ${(node as { text: string }).text.slice(0, 200)}`);
+    bits.push(
+      `text: ${(node as { text: string }).text.slice(0, MAX_INPUT_CHARS)}`,
+    );
   if (node.kind === "data" && (node as { data?: unknown }).data !== undefined) {
     bits.push(
-      `data: ${JSON.stringify((node as { data: unknown }).data).slice(0, 200)}`,
+      `data: ${JSON.stringify((node as { data: unknown }).data).slice(0, MAX_INPUT_CHARS)}`,
     );
   }
   if (
@@ -5536,7 +5568,7 @@ function describeNode(node: import("@html-video/content-graph").Node): string {
     (node as { props?: unknown }).props !== undefined
   ) {
     bits.push(
-      `entity props: ${JSON.stringify((node as { props: unknown }).props).slice(0, 200)}`,
+      `entity props: ${JSON.stringify((node as { props: unknown }).props).slice(0, MAX_INPUT_CHARS)}`,
     );
   }
   if (node.frameIntent) bits.push(`intent: ${node.frameIntent}`);

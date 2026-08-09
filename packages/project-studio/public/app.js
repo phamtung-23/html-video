@@ -127,8 +127,36 @@ function setTheme(theme) {
   } catch {}
   applyTheme(theme);
 }
+
+// Collapse state of the two side panels (left project sidebar, right text pane).
+// They're body classes; persist so a reload keeps them the way the user left
+// them. Applied on load via JS (panels may flash expanded for a blink — no
+// inline-head apply since body classes need <body> to exist).
+const SIDEBAR_KEY = "hv-sidebar-collapsed";
+const TEXTPANE_KEY = "hv-textpane-collapsed";
+function applyCollapsedFromStorage() {
+  try {
+    if (localStorage.getItem(SIDEBAR_KEY) === "1")
+      document.body.classList.add("sidebar-collapsed");
+    if (localStorage.getItem(TEXTPANE_KEY) === "1")
+      document.body.classList.add("textfields-collapsed");
+  } catch {}
+}
+function saveCollapsed() {
+  try {
+    localStorage.setItem(
+      SIDEBAR_KEY,
+      document.body.classList.contains("sidebar-collapsed") ? "1" : "0",
+    );
+    localStorage.setItem(
+      TEXTPANE_KEY,
+      document.body.classList.contains("textfields-collapsed") ? "1" : "0",
+    );
+  } catch {}
+}
 applyTheme(getTheme());
 applySavedTextfieldsWidth();
+applyCollapsedFromStorage();
 
 // Narration voices. Two free, key-less engines:
 //  • Edge-TTS (online): locale-prefixed ids (e.g. "vi-VN-HoaiMyNeural"). `key`
@@ -665,9 +693,11 @@ async function selectProject(id) {
     if (g?.generating && id === state.selectedId) {
       state.messages.push({
         role: "preview-event",
-        content: t("chat.still_generating"),
+        content: buildGenProgress(g),
+        genPoll: true, // marker so the poll can find + update this message
         ts: Date.now(),
       });
+      pollGenerating(id); // keep replaying live progress until it finishes
     }
   } catch {
     /* non-fatal */
@@ -677,6 +707,66 @@ async function selectProject(id) {
   //     be re-enabled after a project is selected
   renderMain();
   await refreshTextFields();
+}
+
+// The progress-panel content for a project that's generating in the background:
+// its live log if we have one, else the static "still generating" line.
+function buildGenProgress(g) {
+  const log = (g?.progress || "").trim();
+  return log || t("chat.still_generating");
+}
+
+// Poll a background generation, updating the progress panel until it finishes,
+// then reload the persisted messages + preview so the result appears on its own
+// (no manual "reload preview" needed). Stops if the user switches project.
+async function pollGenerating(id) {
+  while (id === state.selectedId) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (id !== state.selectedId) return;
+    let g;
+    try {
+      g = await fetch(`/api/projects/${id}/generating`).then((r) => r.json());
+    } catch {
+      return; // network blip — stop; a later project switch can re-arm
+    }
+    if (id !== state.selectedId) return;
+    const msg = state.messages.find((x) => x.genPoll);
+    if (g?.generating) {
+      if (msg) {
+        msg.content = buildGenProgress(g);
+        renderChatLog();
+      }
+    } else {
+      // Finished → drop the poll panel, reload messages + preview + graph.
+      state.messages = state.messages.filter((x) => !x.genPoll);
+      try {
+        state.messages = (await API.getMessages(id)).messages ?? state.messages;
+      } catch {
+        /* keep what we have */
+      }
+      try {
+        const pr = await API.getProject(id);
+        state.selected = pr.project;
+        state.activeFrameId = null;
+        state.frameKinds = {};
+        try {
+          const cg = await API.contentGraph(id);
+          if (cg?.graph?.nodes)
+            for (const n of cg.graph.nodes) state.frameKinds[n.id] = n.kind;
+        } catch {
+          /* single-frame — no graph */
+        }
+      } catch {
+        /* keep current project state */
+      }
+      renderChatLog();
+      renderPreview();
+      await refreshTextFields();
+      renderToolbar();
+      renderFooter();
+      return;
+    }
+  }
 }
 
 // ============== sidebar ==============
@@ -1073,6 +1163,7 @@ function wireToolbar() {
   if (sidebarToggle) {
     sidebarToggle.onclick = () => {
       document.body.classList.toggle("sidebar-collapsed");
+      saveCollapsed();
     };
   }
 }
@@ -1209,11 +1300,16 @@ function renderMain() {
   document.getElementById("btn-new").onclick = createDefaultProject;
   const togBtn = document.getElementById("btn-sidebar-toggle");
   if (togBtn)
-    togBtn.onclick = () => document.body.classList.toggle("sidebar-collapsed");
+    togBtn.onclick = () => {
+      document.body.classList.toggle("sidebar-collapsed");
+      saveCollapsed();
+    };
   const tfTog = document.getElementById("btn-textfields-toggle");
   if (tfTog)
-    tfTog.onclick = () =>
+    tfTog.onclick = () => {
       document.body.classList.toggle("textfields-collapsed");
+      saveCollapsed();
+    };
   if (state.selected) {
     renderChatLog();
     renderComposer();
@@ -1401,6 +1497,7 @@ function wireTextPaneResizer() {
   resizer.onmousedown = (e) => {
     e.preventDefault();
     document.body.classList.remove("textfields-collapsed"); // a drag always expands
+    saveCollapsed();
     const startX = e.clientX;
     const startW = pane.getBoundingClientRect().width;
     document.body.classList.add("tf-resizing");
@@ -2162,6 +2259,7 @@ function renderChatLog() {
       // (renderMessage inspects whether the click actually produced output).
       if (m.confirmInFlight) return;
       m.confirmInFlight = true;
+      renderChatLog(); // hide the buttons immediately → "⏳ Đang tạo…"
       try {
         const ta = document.getElementById("composer-input");
         if (ta)
@@ -2172,6 +2270,7 @@ function renderChatLog() {
         await sendMessage();
       } finally {
         m.confirmInFlight = false;
+        renderChatLog(); // restore buttons if it failed; stays locked if it succeeded
       }
     };
   });
@@ -2205,6 +2304,7 @@ function renderChatLog() {
       } else if (action === "open-video") {
         // Jump to the Video tab in the right pane (un-collapse it first).
         document.body.classList.remove("textfields-collapsed");
+        saveCollapsed();
         document.querySelector('.text-tab[data-text-tab="exports"]')?.click();
       } else if (action === "reveal") {
         // Reveal THIS card's file (not just the latest export).
@@ -2262,8 +2362,26 @@ function renderMessage(m, idx) {
   }
   if (m.role === "system")
     return `<div class="msg system">${esc(m.content)}</div>`;
-  if (m.role === "preview-event")
-    return `<div class="msg preview-event">${esc(m.content)}</div>`;
+  if (m.role === "preview-event") {
+    const c = (m.content ?? "").trim();
+    // Multi-line / long = a generation progress log → render as a readable
+    // left-aligned panel, one step per line with decorated glyphs. Short
+    // one-liners (e.g. "🎞 storyboard reloaded (4 frames)") keep the pill.
+    if (/\n/.test(c) || c.length > 90) {
+      const lines = c
+        // Break before each progress marker so every step lands on its own
+        // line, whether the server joined them with newlines or spaces.
+        .replace(/\s*(✓|🎬|🎞|⏳|🧠|📋|📄)/g, "\n$1")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const body = lines
+        .map((l) => `<div class="gp-line">${decorateProgress(esc(l))}</div>`)
+        .join("");
+      return `<div class="msg gen-progress">${body}</div>`;
+    }
+    return `<div class="msg preview-event">${decorateProgress(esc(c))}</div>`;
+  }
   if (m.role === "thinking")
     return `<div class="msg thinking">${esc(m.content || t("chat.thinking"))}</div>`;
   if (m.role === "export-done") {
@@ -2349,7 +2467,10 @@ function renderMessage(m, idx) {
         }
       }
     }
-    const confirmHtml = renderConfirmCard(confirmP.confirm, resolved, idx);
+    // In-flight (clicked, generation running): lock the card + show a spinner
+    // state so the button can't be clicked again while the agent is working.
+    const pending = !resolved && !!m.confirmInFlight;
+    const confirmHtml = renderConfirmCard(confirmP.confirm, resolved, idx, pending);
     return `<div class="msg assistant">
       <div class="role">${esc(m.agent ?? "agent")}</div>
       <div class="body">${md(sanitizeAssistantProse(confirmP.prose))}${confirmHtml}</div>
@@ -2653,7 +2774,7 @@ function renderFormCard(form, submitted, msgIdx) {
 }
 
 // === hv-confirm render ===
-function renderConfirmCard(confirm, resolved, msgIdx) {
+function renderConfirmCard(confirm, resolved, msgIdx, pending) {
   const title = confirm.title || "Looks right?";
   const summary = confirm.summary || [];
   const actions = confirm.actions || ["generate", "edit"];
@@ -2667,18 +2788,25 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
     </div>`;
     })
     .join("");
-  const actionsHtml = resolved
+  // Locked = resolved (finished) OR pending (clicked, generation running).
+  const locked = resolved || pending;
+  const actionsHtml = locked
     ? ""
     : `
     <div class="confirm-actions">
       ${actions.includes("generate") ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${iconL("check")}${esc(t("card.confirm_generate"))}</button>` : ""}
       ${actions.includes("edit") ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${iconL("edit")}${esc(t("card.confirm_edit"))}</button>` : ""}
     </div>`;
-  return `<div class="confirm-card${resolved ? " resolved" : ""}">
+  const markHtml = resolved
+    ? `<div class="confirm-resolved-mark">${resolved === t("card.confirm_edit") ? iconL("edit") : iconL("check")}${esc(resolved)}</div>`
+    : pending
+      ? `<div class="confirm-resolved-mark pending">⏳ Đang tạo…</div>`
+      : "";
+  return `<div class="confirm-card${locked ? " resolved" : ""}">
     <div class="confirm-title">${esc(title)}</div>
     <div class="confirm-summary">${summaryHtml}</div>
     ${actionsHtml}
-    ${resolved ? `<div class="confirm-resolved-mark">${resolved === t("card.confirm_edit") ? iconL("edit") : iconL("check")}${esc(resolved)}</div>` : ""}
+    ${markHtml}
   </div>`;
 }
 
